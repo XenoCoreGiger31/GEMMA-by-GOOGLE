@@ -73,7 +73,7 @@ SUPPORTED_TOOLS = [
     "run_command", "run_masscan", "run_nmap", "run_netstat",
     "run_sqlmap", "run_nikto", "run_hydra", "run_searchsploit",
     "run_curl", "run_wget", "write_file", "read_file",
-    "run_john", "run_ncrack", "run_gobuster", "run_enum4linux", "run_medusa"
+    "run_john", "run_ncrack", "run_gobuster", "run_enum4linux", "run_medusa", "run_setoolkit"
 ]
 
 # Kali tools that may need sudo
@@ -173,6 +173,9 @@ class ToolExecutor:
 
         elif tool == "run_ncrack":
             return self._run_ncrack(params.get("target", ""), params.get("service", "ssh"), params.get("users", ""), params.get("wordlist", ""))
+
+        elif tool == "run_setoolkit":
+            return self._run_setoolkit(params.get("attack_type", "1"), params.get("target", ""))
 
         elif tool == "run_gobuster":
             return self._run_gobuster(params.get("target", ""), params.get("wordlist", ""), params.get("mode", "dir"))
@@ -381,10 +384,7 @@ class ToolExecutor:
                 "message": "Missing parameters: target, service, username, and wordlist are required"
             }
         
-        if service.lower() in ["vnc", "rdp"]:
-            command = f"hydra -P {wordlist} -t 4 -I {service}://{target}"
-        else:
-            command = f"hydra -l {username} -P {wordlist} -t {threads} -I {service}://{target}"
+        command = f"hydra -l {username} -P {wordlist} -t {threads} -I {service}://{target}"
         
         result = self._execute_command(command)
         return result
@@ -583,29 +583,17 @@ class ToolExecutor:
         if not target:
             return {"status": "error", "error_type": "invalid_params", "message": "No target specified"}
         wordlist = wordlist or "/usr/share/seclists/Passwords/Common-Credentials/darkweb2017_top-1000.txt"
-        users_file = "/tmp/users.txt"
-        if users:
-            with open(users_file, "w") as f: f.write(users)
-        elif not os.path.exists(users_file):
-            with open(users_file, "w") as f: f.write("admin\nroot\nmsfadmin\nuser\n")
-        command = f"ncrack -U {users_file} -P {wordlist} {target}:{service}"
+        command = f"ncrack -U /tmp/users.txt -P {wordlist} {target}:{service}"
+        return self._execute_command(command)
+
+    def _run_setoolkit(self, attack_type, target):
+        if not target:
+            return {"status": "error", "error_type": "invalid_params", "message": "No target specified"}
+        command = f"echo '{attack_type}\n2\n{target}' | sudo setoolkit"
         return self._execute_command(command)
 
 # Global executor
 executor = ToolExecutor()
-
-
-@app.route('/mcp', methods=['GET', 'POST'])
-def mcp_endpoint():
-    """MCP-compatible endpoint for Cursor and other MCP clients"""
-    from flask import request, jsonify
-    if request.method == 'GET':
-        return jsonify({
-            "name": "kali-security-agent",
-            "version": "1.0",
-            "tools": [{"name": t} for t in ALLOWED_TOOLS]
-        })
-    return execute()
 
 @app.route('/', methods=['POST'])
 def execute():
@@ -675,4 +663,4 @@ if __name__ == "__main__":
     print("  ✓ Security tools: SQLmap, Nikto, Hydra, Searchsploit")
     print("  ✓ Web tools: curl, wget")
     print("=" * 60)
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    app.run(host='localhost', port=8000, debug=False)
