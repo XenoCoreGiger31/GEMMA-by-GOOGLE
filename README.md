@@ -2,18 +2,6 @@
 
 <img width="1200" height="783" alt="Final_EDIT" src="https://github.com/user-attachments/assets/fe9aafc5-294b-43f5-b20f-4ff1305bf0d8" />
 
-# GEMMA-by-GOOGLE
-GEMMA-POWERED-BY-GOOGLE-CYBERSECURITY-AUTONOMOUS-AI: 
-
-An Autonomous AI agent inside of Linux environment with one of the worlds most cutting edge AI models, Googles GEMMA 4-12b Model. Fully uncensored/Abliterated. FULLY 
-
-LOCAL. FULLY FREE. With PERSISTENT negative cache learning, adaptation.Learning and self harnessing getting more self aware and intelligent with each engagement. 
-
-Autonomous recon, scanning and attack vector, with one word direction: engage. Attack-loops, reports, professional and comepletely local this agent is fast, and 
-
-documents its exploits,findings and risk levels autonomously and cleanly professionally. 
------
-
 <div align="center">
 
 [What It Does](#what-it-does) · [Tools](#tool-arsenal-22-tools) · [Architecture](#architecture) · [Stack](#stack) · [Usage](#usage) · [Contributing](CONTRIBUTING.md)
@@ -28,6 +16,21 @@ documents its exploits,findings and risk levels autonomously and cleanly profess
 
 </div>
 
+
+
+
+
+# GEMMA-by-GOOGLE
+GEMMA-POWERED-BY-GOOGLE-CYBERSECURITY-AUTONOMOUS-AI: 
+
+An Autonomous AI agent inside of Linux environment with one of the worlds most cutting edge AI models, Googles GEMMA 4-12b Model. Fully uncensored/Abliterated. FULLY 
+
+LOCAL. FULLY FREE. With PERSISTENT negative cache learning, adaptation.Learning and self harnessing getting more self aware and intelligent with each engagement. 
+
+Autonomous recon, scanning and attack vector, with one word direction: engage. Attack-loops, reports, professional and comepletely local this agent is fast, and 
+
+documents its exploits,findings and risk levels autonomously and cleanly professionally. 
+-----
 
 license: mit
 language:
