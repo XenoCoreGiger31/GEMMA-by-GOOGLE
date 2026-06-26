@@ -1,7 +1,26 @@
+<img width="1021" height="720" alt="IMG_6600" src="https://github.com/user-attachments/assets/90e5df6a-487a-45f7-b42b-35b1948a3519" />
+
+
+
 # GEMMA-by-GOOGLE
 GEMMA-POWERED-BY-GOOGLE-CYBERSECURITY-AUTONOMOUS-AI. AN AUTONOMOUS AI AGENT USING A LINUX ENVIRONMENT-AND GOOGLES GEMMA4-12b MODEL. HIGHLY ABLITERATED. FULLY LOCAL. FULLY FREE. WITH PERSISTENT NEG-EXPERIENCE-CACHE LEARNING, SELF HARNESSING AND GETTING SMARTER WITH EACH ENGAGEMENT. AUTONOMOUS RECON, ATTACK-LOOPS AND AUTOMATIC PROFESSIONAL REPORT GENERATION ON FINDINGS. This is an independent community project and is no way affiliated or sponsored by Google.
 <img width="1200" height="783" alt="Final_EDIT" src="https://github.com/user-attachments/assets/fe9aafc5-294b-43f5-b20f-4ff1305bf0d8" />
 -----
+
+<div align="center">
+
+[What It Does](#what-it-does) · [Tools](#tool-arsenal-22-tools) · [Architecture](#architecture) · [Stack](#stack) · [Usage](#usage) · [Contributing](CONTRIBUTING.md)
+
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Python](https://img.shields.io/badge/Python-3.10+-green)
+![Tools](https://img.shields.io/badge/Tools-22-red)
+![LM Studio](https://img.shields.io/badge/LM_Studio-Compatible-purple)
+![Hugging Face](https://img.shields.io/badge/Hugging_Face-automajicly-yellow)
+![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
+![Platform](https://img.shields.io/badge/Platform-Kali_Linux-blueviolet)
+
+</div>
+
 
 license: mit
 language:
@@ -109,9 +128,6 @@ python3 agent_loop.py
 ```
 
 -----
-
-## Project Status
-
 Active development. New capabilities and upgrades pushed regularly.
 
 Built by a self-taught developer and security researcher. One year in.
