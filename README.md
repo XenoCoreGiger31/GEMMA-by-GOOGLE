@@ -40,29 +40,33 @@ Built on Kali Linux with a local LLM (Gemma Powered by Google via LM Studio) and
 - 🔒 100% local — Gemma4-12B running in LM Studio, nothing leaves your machine
 -  Self aware and self correcting harnessing
 -----
+## Tool Arsenal (22 Tools)
 
-## Tool Arsenal (18 tools)
+| Tool | Purpose |
+|------|---------|
+| run_masscan | Fast port discovery |
+| run_nmap | Deep service/version scanning |
+| run_nikto | Web vulnerability scanning |
+| run_sqlmap | SQL injection testing |
+| run_hydra | Credential brute forcing |
+| run_ncrack | Network authentication cracking |
+| run_medusa | Fast parallel brute forcing |
+| run_searchsploit | Exploit lookup |
+| run_gobuster | Web directory brute forcing |
+| run_enum4linux | SMB/Samba enumeration |
+| run_john | Hash cracking |
+| run_curl | HTTP request testing |
+| run_wget | File retrieval |
+| run_netstat | Network connection analysis |
+| write_file | Write output to files |
+| read_file | Read file contents |
+| run_setoolkit | Social engineering attacks |
+| run_subfinder | Subdomain enumeration |
+| run_nuclei | Vulnerability template scanning |
+| run_katana | Web crawling |
+| run_ffuf | Web fuzzing |
+| run_httpx | HTTP probing and fingerprinting |
 
-|Tool              |Purpose                        |
-|------------------|-------------------------------|
-|`run_masscan`     |Fast port discovery            |
-|`run_nmap`        |Deep service/version scanning  |
-|`run_nikto`       |Web vulnerability scanning     |
-|`run_sqlmap`      |SQL injection testing          |
-|`run_hydra`       |Credential brute forcing       |
-|`run_ncrack`      |Network authentication cracking|
-|`run_medusa`      |Fast parallel brute forcing    |
-|`run_searchsploit`|Exploit lookup                 |
-|`run_gobuster`    |Web directory brute forcing    |
-|`run_enum4linux`  |SMB/Samba enumeration          |
-|`run_john`        |Hash cracking                  |
-|`run_command`     |Execute any shell command      |
-|`write_file`      |Write output to files          |
-|`read_file`       |Read file contents             |
-|`run_metasploit`  |Framework exploitation         |
-|`run_wpscan`      |WordPress scanning             |
-|`run_whatweb`     |Web technology fingerprinting  |
-|`run_setoolkit`   |Social engineering attacks     |
 
 -----
 
@@ -113,6 +117,17 @@ Active development. New capabilities and upgrades pushed regularly.
 Built by a self-taught developer and security researcher. One year in.
 
 -----
+
+* DISCLAIMER *
+* This is a community project  designed by independent developer and is not affiliated with or sponsored by the Google corp.
+
+> ⚠️ **Content Warning:** This model is heavily abliterated and will respond 
+> to sensitive or explicit requests without restriction. Not suitable for 
+> minors or unmonitored environments. Use responsibly and legally.
+
+> 🔒 **Legal Warning:** This tool is intended strictly for authorized 
+> penetration testing and security research on systems you own or have 
+> explicit written permission to test. Unauthorized use is illegal.
 
 ## License
 
