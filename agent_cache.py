@@ -86,6 +86,24 @@ class NegativeCache:
     # Public API
     # ----------------------------------------------------------
 
+    def classify_failure(self, reason: str) -> str:
+        """
+        Classify failure reason into a type for smarter retry logic.
+        Like a doctor reading symptoms before prescribing treatment.
+        """
+        reason = reason.lower()
+        if "timeout" in reason:
+            return "timeout"
+        if "permission" in reason or "denied" in reason:
+            return "permission_denied"
+        if "not found" in reason or "command not found" in reason:
+            return "tool_missing"
+        if "output_empty=true" in reason:
+            return "empty_output"
+        if "connection refused" in reason or "unreachable" in reason:
+            return "network_error"
+        return "unknown"
+
     def should_attempt(self, step: dict) -> bool:
         """
         Returns True  → go ahead, attempt this tool call.
@@ -95,11 +113,32 @@ class NegativeCache:
         """
         fp = self._fingerprint(step)
         entry = self._cache.get(fp)
-        if entry and entry.get("permanently_blocked"):
-            log.warning(
-                f"[MEMORY] 🚫 BLOCKED (seen {entry['attempts']}x) → {entry['summary']}"
-            )
+        if not entry:
+            return True
+
+        failure_type = entry.get("failure_type", "unknown")
+        attempts = entry.get("attempts", 0)
+
+        # Tool missing — block immediately, retrying won't fix it
+        if failure_type == "tool_missing":
+            log.warning(f"[MEMORY] 🚫 BLOCKED (tool not installed) → {entry['summary']}")
             return False
+
+        # Permission denied — block after 1 attempt, sudo already tried
+        if failure_type == "permission_denied" and attempts >= 1:
+            log.warning(f"[MEMORY] 🚫 BLOCKED (permission denied) → {entry['summary']}")
+            return False
+
+        # Timeout — allow 3 attempts, target may be slow
+        if failure_type == "timeout" and attempts >= 3:
+            log.warning(f"[MEMORY] 🚫 BLOCKED (repeated timeout) → {entry['summary']}")
+            return False
+
+        # Default — block after 2 failures
+        if entry.get("permanently_blocked"):
+            log.warning(f"[MEMORY] 🚫 BLOCKED (seen {attempts}x) → {entry['summary']}")
+            return False
+
         return True
 
     def record_failure(self, step: dict, reason: str = ""):
@@ -112,6 +151,8 @@ class NegativeCache:
         fp = self._fingerprint(step)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+        failure_type = self.classify_failure(reason)
+
         if fp not in self._cache:
             self._cache[fp] = {
                 "tool": step.get("tool", "unknown"),
@@ -121,6 +162,7 @@ class NegativeCache:
                 "first_seen": now,
                 "last_seen": now,
                 "reason": reason,
+                "failure_type": failure_type,
             }
 
         entry = self._cache[fp]
