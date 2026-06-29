@@ -44,10 +44,6 @@ class NegativeCache:
         self._cache = self._load()
         log.info(f"[MEMORY] 🧠 Negative cache loaded — {len(self._cache)} blocked fingerprints")
 
-    # ----------------------------------------------------------
-    # Internal helpers
-    # ----------------------------------------------------------
-
     def _load(self):
         if os.path.exists(CACHE_FILE):
             try:
@@ -65,7 +61,7 @@ class NegativeCache:
         except Exception as e:
             log.error(f"[ERROR] 😭🔥 Cache save failed: {e}")
 
-    def _fingerprint(self, step: dict) -> str:
+    def _fingerprint(self, step: dict, engagement_id: str = "") -> str:
         """
         Stable hash of the tool call so identical attempts
         match across sessions regardless of field ordering.
@@ -74,6 +70,7 @@ class NegativeCache:
         (e.g. internal timestamps injected by wrappers).
         """
         relevant = {k: v for k, v in step.items() if k != "_meta"}
+        relevant["_engagement_id"] = engagement_id
         canonical = json.dumps(relevant, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
@@ -82,18 +79,14 @@ class NegativeCache:
         params = " | ".join(f"{k}={v}" for k, v in step.items() if k != "tool")
         return f"{tool} | {params}"
 
-    # ----------------------------------------------------------
-    # Public API
-    # ----------------------------------------------------------
-
-    def should_attempt(self, step: dict) -> bool:
+    def should_attempt(self, step: dict, engagement_id: str = "") -> bool:
         """
         Returns True  → go ahead, attempt this tool call.
         Returns False → permanently blocked, skip it entirely.
 
         Call this BEFORE execute_step().
         """
-        fp = self._fingerprint(step)
+        fp = self._fingerprint(step, engagement_id)
         entry = self._cache.get(fp)
         if entry and entry.get("permanently_blocked"):
             log.warning(
@@ -102,14 +95,14 @@ class NegativeCache:
             return False
         return True
 
-    def record_failure(self, step: dict, reason: str = ""):
+    def record_failure(self, step: dict, reason: str = "", engagement_id: str = ""):
         """
         Record one failed attempt.
         After 2 failures the fingerprint is permanently blocked.
 
         Call this after a failed execute_step().
         """
-        fp = self._fingerprint(step)
+        fp = self._fingerprint(step, engagement_id)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if fp not in self._cache:
@@ -141,13 +134,12 @@ class NegativeCache:
 
         self._save()
 
-    def record_success(self, step: dict):
+    def record_success(self, step: dict, engagement_id: str = ""):
         """
         If a previously-failed fingerprint suddenly works
         (e.g. different target context), clear its block.
-        Uncommon but fair.
         """
-        fp = self._fingerprint(step)
+        fp = self._fingerprint(step, engagement_id)
         if fp in self._cache:
             log.info(f"[MEMORY] ✅ Clearing prior failure record — tool succeeded: {self._summary(step)}")
             del self._cache[fp]

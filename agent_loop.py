@@ -239,7 +239,7 @@ def run_attack_loop(target, memory, cache=None):
         success = False
         for step in chain:
             # ── Negative cache gate ──────────────────────────────
-            if cache and not cache.should_attempt(step):
+            if cache and not cache.should_attempt(step, engagement_id=f"{SESSION_ID}_{target}"):
                 log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
                 continue
             # ────────────────────────────────────────────────────
@@ -247,12 +247,12 @@ def run_attack_loop(target, memory, cache=None):
             if ok and output and any(x in output.lower() for x in ["password", "login", "session", "shell", "success", "found", "valid"]):
                 success = True
                 if cache:
-                    cache.record_success(step)
+                    cache.record_success(step, engagement_id=f"{SESSION_ID}_{target}")
                 memory.add_finding(port, step.get("tool"), output[:2000])
             elif not ok:
                 if cache:
                     reason = f"tool={step.get('tool')} port={port} output_empty={not bool(output)}"
-                    cache.record_failure(step, reason=reason)
+                    cache.record_failure(step, reason=reason, engagement_id=f"{SESSION_ID}_{target}")
         memory.mark_tried(port, success=success)
     log.info(f"[ATTACK] Attack loop complete")
     summary = memory.summary()
@@ -276,12 +276,12 @@ def run_full_engagement(target):
 def execute_chain(chain, cache=None):
     for i, step in enumerate(chain, 1):
         log.info(f"[CHAIN] 🔗 Step {i} of {len(chain)}: {step.get('tool')}")
-        if cache and not cache.should_attempt(step):
+        if cache and not cache.should_attempt(step, engagement_id=f"{SESSION_ID}_{target}"):
             log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
             continue
         output, ok = execute_step(step)
         if not ok and cache:
-            cache.record_failure(step, reason=f"manual chain failure, step {i}")
+            cache.record_failure(step, reason=f"manual chain failure, step {i}", engagement_id=f"{SESSION_ID}_{target}")
 
 def main():
     cache = NegativeCache()
