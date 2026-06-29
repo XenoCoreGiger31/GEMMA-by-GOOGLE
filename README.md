@@ -28,7 +28,7 @@ An Autonomous AI agent inside of Linux environment with one of the worlds most c
 LOCAL. FULLY FREE. With PERSISTENT negative cache learning, adaptation.Learning and self harnessing getting more self aware and intelligent with each engagement. 
 
 Autonomous recon, scanning and attack vector, with one word direction: engage. Attack-loops, reports, professional and comepletely local -this agent is fast, and 
-documents its exploits, findings and risk levels autonomously with clean precision and professionalism. 
+documents its exploits, findings and risk levels autonomously with clean precision and professionalism. Star if you like it!
 -----
 
 license: mit
