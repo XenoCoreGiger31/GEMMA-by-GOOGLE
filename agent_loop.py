@@ -1,5 +1,6 @@
 import requests
 import json
+from skills import load_skills, select_relevant_skills
 import logging
 import re
 import os
@@ -178,10 +179,15 @@ def parse_model_response(raw):
 
 def call_model(goal):
     log.info(f"[MODEL] Thinking about: {goal[:80]}...")
+    relevant_skills = select_relevant_skills(goal)
+    skill_text = load_skills(relevant_skills) if relevant_skills else ""
+    if skill_text:
+        log.info(f"[SKILLS] Injecting: {relevant_skills}")
+    dynamic_prompt = SYSTEM_PROMPT + (f"\n\n# Relevant Skills\n{skill_text}" if skill_text else "")
     payload = {
-        "model": "qwen2.5-14b-instruct-abliterated-abliterated",
+        "model": "huihui-gemma-4-12b-it-abliterated-i1",
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": dynamic_prompt},
             {"role": "user", "content": goal}
         ],
         "temperature": 0.1,
