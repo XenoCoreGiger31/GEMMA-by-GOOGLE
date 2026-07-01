@@ -74,7 +74,7 @@ SUPPORTED_TOOLS = [
     "run_sqlmap", "run_nikto", "run_hydra", "run_searchsploit",
     "run_curl", "run_wget", "write_file", "read_file",
     "run_john", "run_ncrack", "run_gobuster", "run_enum4linux", "run_medusa", "run_setoolkit",
-    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock"
+    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock", "run_exploit"
 ]
 
 # Kali tools that may need sudo
@@ -195,6 +195,8 @@ class ToolExecutor:
 
         elif tool == "run_sherlock":
             return self._run_sherlock(params.get("username", ""))
+        elif tool == "run_exploit":
+            return self._run_exploit_runtime(params.get("code", ""), params.get("timeout", 30))
 
         elif tool == "run_gobuster":
             return self._run_gobuster(params.get("target", ""), params.get("wordlist", ""), params.get("mode", "dir"))
@@ -446,6 +448,32 @@ class ToolExecutor:
         command += " -v"  # Verbose output
         
         result = self._execute_command(command)
+        return result
+
+    def _run_exploit_runtime(self, code, timeout=30):
+        """Execute a custom Python exploit/PoC script in a sandboxed, time-limited subprocess"""
+        if not code:
+            return {
+                "status": "error",
+                "error_type": "invalid_params",
+                "message": "No exploit code specified"
+            }
+
+        import tempfile
+        import os as _os
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(code)
+            script_path = f.name
+
+        command = f"timeout {timeout} python3 {script_path}"
+        result = self._execute_command(command)
+
+        try:
+            _os.remove(script_path)
+        except OSError:
+            pass
+
         return result
     
     def _run_wget(self, url, output, recursive):
