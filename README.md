@@ -1,4 +1,34 @@
+<img width="1021" height="720" alt="IMG_6600" src="https://github.com/user-attachments/assets/90e5df6a-487a-45f7-b42b-35b1948a3519" />
+
 <img width="1200" height="783" alt="Final_EDIT" src="https://github.com/user-attachments/assets/fe9aafc5-294b-43f5-b20f-4ff1305bf0d8" />
+
+<div align="center">
+
+[What It Does](#what-it-does) · [Tools](#tool-arsenal-23-tools) · [Architecture](#architecture) · [Stack](#stack) · [Usage](#usage) · [Contributing](CONTRIBUTING.md)
+
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Python](https://img.shields.io/badge/Python-3.10+-green)
+![Tools](https://img.shields.io/badge/Tools-23-red)
+![LM Studio](https://img.shields.io/badge/LM_Studio-Compatible-purple)
+![Hugging Face](https://img.shields.io/badge/Hugging_Face-automajicly-yellow)
+![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
+![Platform](https://img.shields.io/badge/Platform-Kali_Linux-blueviolet)
+
+</div>
+
+
+
+
+
+# GEMMA-by-GOOGLE
+GEMMA-POWERED-BY-GOOGLE-CYBERSECURITY-AUTONOMOUS-AI: 
+
+An Autonomous AI agent inside of Linux environment with one of the worlds most cutting edge AI models, Googles GEMMA 4-12b Model. Fully uncensored/Abliterated. FULLY 
+
+LOCAL. FULLY FREE. With PERSISTENT negative cache learning, adaptation.Learning and self harnessing getting more self aware and intelligent with each engagement. 
+
+Autonomous recon, scanning and attack vector mapping,  - one word to start it all: ENGAGE. Attack-loops, reports, professional and comepletely local -this agent is fast, and 
+documents its exploits, findings and risk levels autonomously with clean precision and professionalism. Star if you like it, or open a PR and lets do something together. This is where ideas come alive and problems are solved!!
 -----
 
 license: mit
@@ -19,11 +49,11 @@ language:
 
 -----
 
-# 🔐 PenMaster Security
+# 🔐 HALO Cybersecurity
 
 **Autonomous AI-powered penetration testing agent — fully local, no cloud, no API keys.**
 
-Built on Kali Linux with a local LLM (Qwen 2.5-14B via LM Studio) and a Flask-based MCP tool server. The agent runs recon, attacks, and generates professional pentest reports — all autonomously.
+Built on Kali Linux with a local LLM (Gemma Powered by Google via LM Studio) and a Flask-based MCP tool server. The agent runs recon, attacks, and generates professional pentest reports — all autonomously.
 
 ![demo](./Final_EDIT.gif)
 
@@ -35,32 +65,38 @@ Built on Kali Linux with a local LLM (Qwen 2.5-14B via LM Studio) and a Flask-ba
 - ⚔️ Autonomous attack loop — selects and chains tools based on what it finds
 - 🧠 Persistent negative experience cache — learns what fails across ALL sessions and never wastes time on it again
 - 📝 Auto-generates branded HTML pentest reports on session end (Ctrl+C)
-- 🔒 100% local — Qwen 2.5-14B running in LM Studio, nothing leaves your machine
-
+- 🔒 100% local — Gemma4-12B running in LM Studio, nothing leaves your machine
+- 🧩 Adaptive skill injection — loads relevant attack playbooks into the prompt based on the current goal
+-  Self aware and self correcting harnessing
 -----
+## Tool Arsenal (23 Tools)
 
-## Tool Arsenal (18 tools)
+| Tool | Purpose |
+|------|---------|
+| run_masscan | Fast port discovery |
+| run_nmap | Deep service/version scanning |
+| run_nikto | Web vulnerability scanning |
+| run_sqlmap | SQL injection testing |
+| run_hydra | Credential brute forcing |
+| run_ncrack | Network authentication cracking |
+| run_medusa | Fast parallel brute forcing |
+| run_searchsploit | Exploit lookup |
+| run_gobuster | Web directory brute forcing |
+| run_enum4linux | SMB/Samba enumeration |
+| run_john | Hash cracking |
+| run_curl | HTTP request testing |
+| run_wget | File retrieval |
+| run_netstat | Network connection analysis |
+| write_file | Write output to files |
+| read_file | Read file contents |
+| run_setoolkit | Social engineering attacks |
+| run_subfinder | Subdomain enumeration |
+| run_nuclei | Vulnerability template scanning |
+| run_katana | Web crawling |
+| run_ffuf | Web fuzzing |
+| run_httpx | HTTP probing and fingerprinting |
+| run_sherlock | Username OSINT reconnaissance across 90+ platforms |
 
-|Tool              |Purpose                        |
-|------------------|-------------------------------|
-|`run_masscan`     |Fast port discovery            |
-|`run_nmap`        |Deep service/version scanning  |
-|`run_nikto`       |Web vulnerability scanning     |
-|`run_sqlmap`      |SQL injection testing          |
-|`run_hydra`       |Credential brute forcing       |
-|`run_ncrack`      |Network authentication cracking|
-|`run_medusa`      |Fast parallel brute forcing    |
-|`run_searchsploit`|Exploit lookup                 |
-|`run_gobuster`    |Web directory brute forcing    |
-|`run_enum4linux`  |SMB/Samba enumeration          |
-|`run_john`        |Hash cracking                  |
-|`run_command`     |Execute any shell command      |
-|`write_file`      |Write output to files          |
-|`read_file`       |Read file contents             |
-|`run_metasploit`  |Framework exploitation         |
-|`run_wpscan`      |WordPress scanning             |
-|`run_whatweb`     |Web technology fingerprinting  |
-|`run_setoolkit`   |Social engineering attacks     |
 
 -----
 
@@ -77,13 +113,13 @@ agent_loop.py  ──►  mcp_server.py (Flask, port 8000)  ──►  security 
 
 ## Sovereign Agent Layer v1
 
-The negative experience cache fingerprints every tool call. If it fails once, it gets one retry. Fail twice — permanently blacklisted across all future sessions. The agent never wastes cycles on dead ends it has already proven don’t work.
+The negative experience cache fingerprints every tool call. If it fails once, it gets one retry. Fail twice — permanently blacklisted and the agent subsequently moves on to next, more practical tool for the job. The agent never wastes cycles on dead ends it has already proven don’t work. Instead, the agent autonomously structures its learning through trial and error harnessing where it learns what will and will not work for each particular attack. If success, the agent prints a thumbs up to the user, denoting said success. Then arrives at the next attack mission.
 
 -----
 
 ## Stack
 
-- **Model**: Qwen 2.5-14B Instruct Abliterated (GGUF via LM Studio)
+- **Model**: Gemma4-12B Instruct Abliterated (GGUF via LM Studio)
 - **Agent**: Python autonomous loop with MCP tool calls
 - **MCP Server**: Flask on port 8000
 - **OS**: Kali Linux (UTM on Apple Silicon M1)
@@ -103,16 +139,23 @@ python3 agent_loop.py
 ```
 
 -----
-
-## Project Status
-
 Active development. New capabilities and upgrades pushed regularly.
 
 Built by a self-taught developer and security researcher. One year in.
 
 -----
 
+* DISCLAIMER *
+* This is a community project  designed by independent developer and is not affiliated with or sponsored by the Google corp.
+
+> ⚠️ **Content Warning:** This model is heavily abliterated and will respond 
+> to sensitive or explicit requests without restriction. Not suitable for 
+> minors or unmonitored environments. Use responsibly and legally.
+
+> 🔒 **Legal Warning:** This tool is intended strictly for authorized 
+> penetration testing and security research on systems you own or have 
+> explicit written permission to test. Unauthorized use is illegal.
+
 ## License
 
 MIT
-
