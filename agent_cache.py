@@ -6,7 +6,7 @@ from datetime import datetime
 
 # ============================================================
 # 🧠 PERSISTENT NEGATIVE EXPERIENCE CACHE
-# GEMMA-by-GOOGLE — Sovereign Agent Layer v1
+# PenMaster Security — Sovereign Agent Layer v1
 #
 # Analogy: a veteran soldier's scar tissue.
 # The agent remembers every failed approach across ALL sessions.
@@ -44,6 +44,10 @@ class NegativeCache:
         self._cache = self._load()
         log.info(f"[MEMORY] 🧠 Negative cache loaded — {len(self._cache)} blocked fingerprints")
 
+    # ----------------------------------------------------------
+    # Internal helpers
+    # ----------------------------------------------------------
+
     def _load(self):
         if os.path.exists(CACHE_FILE):
             try:
@@ -61,7 +65,7 @@ class NegativeCache:
         except Exception as e:
             log.error(f"[ERROR] 😭🔥 Cache save failed: {e}")
 
-    def _fingerprint(self, step: dict, engagement_id: str = "") -> str:
+    def _fingerprint(self, step: dict) -> str:
         """
         Stable hash of the tool call so identical attempts
         match across sessions regardless of field ordering.
@@ -70,7 +74,6 @@ class NegativeCache:
         (e.g. internal timestamps injected by wrappers).
         """
         relevant = {k: v for k, v in step.items() if k != "_meta"}
-        relevant["_engagement_id"] = engagement_id
         canonical = json.dumps(relevant, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
@@ -79,31 +82,76 @@ class NegativeCache:
         params = " | ".join(f"{k}={v}" for k, v in step.items() if k != "tool")
         return f"{tool} | {params}"
 
-    def should_attempt(self, step: dict, engagement_id: str = "") -> bool:
+    # ----------------------------------------------------------
+    # Public API
+    # ----------------------------------------------------------
+
+    def classify_failure(self, reason: str) -> str:
+        """
+        Classify failure reason into a type for smarter retry logic.
+        Like a doctor reading symptoms before prescribing treatment.
+        """
+        reason = reason.lower()
+        if "timeout" in reason:
+            return "timeout"
+        if "permission" in reason or "denied" in reason:
+            return "permission_denied"
+        if "not found" in reason or "command not found" in reason:
+            return "tool_missing"
+        if "output_empty=true" in reason:
+            return "empty_output"
+        if "connection refused" in reason or "unreachable" in reason:
+            return "network_error"
+        return "unknown"
+
+    def should_attempt(self, step: dict) -> bool:
         """
         Returns True  → go ahead, attempt this tool call.
         Returns False → permanently blocked, skip it entirely.
 
         Call this BEFORE execute_step().
         """
-        fp = self._fingerprint(step, engagement_id)
+        fp = self._fingerprint(step)
         entry = self._cache.get(fp)
-        if entry and entry.get("permanently_blocked"):
-            log.warning(
-                f"[MEMORY] 🚫 BLOCKED (seen {entry['attempts']}x) → {entry['summary']}"
-            )
+        if not entry:
+            return True
+
+        failure_type = entry.get("failure_type", "unknown")
+        attempts = entry.get("attempts", 0)
+
+        # Tool missing — block immediately, retrying won't fix it
+        if failure_type == "tool_missing":
+            log.warning(f"[MEMORY] 🚫 BLOCKED (tool not installed) → {entry['summary']}")
             return False
+
+        # Permission denied — block after 1 attempt, sudo already tried
+        if failure_type == "permission_denied" and attempts >= 1:
+            log.warning(f"[MEMORY] 🚫 BLOCKED (permission denied) → {entry['summary']}")
+            return False
+
+        # Timeout — allow 3 attempts, target may be slow
+        if failure_type == "timeout" and attempts >= 3:
+            log.warning(f"[MEMORY] 🚫 BLOCKED (repeated timeout) → {entry['summary']}")
+            return False
+
+        # Default — block after 2 failures
+        if entry.get("permanently_blocked"):
+            log.warning(f"[MEMORY] 🚫 BLOCKED (seen {attempts}x) → {entry['summary']}")
+            return False
+
         return True
 
-    def record_failure(self, step: dict, reason: str = "", engagement_id: str = ""):
+    def record_failure(self, step: dict, reason: str = ""):
         """
         Record one failed attempt.
         After 2 failures the fingerprint is permanently blocked.
 
         Call this after a failed execute_step().
         """
-        fp = self._fingerprint(step, engagement_id)
+        fp = self._fingerprint(step)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        failure_type = self.classify_failure(reason)
 
         if fp not in self._cache:
             self._cache[fp] = {
@@ -114,6 +162,7 @@ class NegativeCache:
                 "first_seen": now,
                 "last_seen": now,
                 "reason": reason,
+                "failure_type": failure_type,
             }
 
         entry = self._cache[fp]
@@ -134,12 +183,13 @@ class NegativeCache:
 
         self._save()
 
-    def record_success(self, step: dict, engagement_id: str = ""):
+    def record_success(self, step: dict):
         """
         If a previously-failed fingerprint suddenly works
         (e.g. different target context), clear its block.
+        Uncommon but fair.
         """
-        fp = self._fingerprint(step, engagement_id)
+        fp = self._fingerprint(step)
         if fp in self._cache:
             log.info(f"[MEMORY] ✅ Clearing prior failure record — tool succeeded: {self._summary(step)}")
             del self._cache[fp]

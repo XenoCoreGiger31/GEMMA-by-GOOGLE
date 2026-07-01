@@ -74,7 +74,7 @@ SUPPORTED_TOOLS = [
     "run_sqlmap", "run_nikto", "run_hydra", "run_searchsploit",
     "run_curl", "run_wget", "write_file", "read_file",
     "run_john", "run_ncrack", "run_gobuster", "run_enum4linux", "run_medusa", "run_setoolkit",
-    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx"
+    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock"
 ]
 
 # Kali tools that may need sudo
@@ -192,6 +192,9 @@ class ToolExecutor:
 
         elif tool == "run_httpx":
             return self._run_httpx(params.get("target", ""), params.get("flags", ""))
+
+        elif tool == "run_sherlock":
+            return self._run_sherlock(params.get("username", ""))
 
         elif tool == "run_gobuster":
             return self._run_gobuster(params.get("target", ""), params.get("wordlist", ""), params.get("mode", "dir"))
@@ -657,6 +660,13 @@ class ToolExecutor:
         else:
             command += " -status-code -title -tech-detect -silent"
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
+        return {"status": "success", "output": result.stdout, "stderr": result.stderr}
+
+    def _run_sherlock(self, username):
+        if not username:
+            return {"status": "error", "error_type": "invalid_params", "message": "No username specified"}
+        command = f"/home/bigkali/.local/bin/sherlock {username} --print-found --timeout 10"
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=120)
         return {"status": "success", "output": result.stdout, "stderr": result.stderr}
 
 

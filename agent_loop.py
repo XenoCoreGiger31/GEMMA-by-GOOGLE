@@ -1,5 +1,6 @@
 import requests
 import json
+from skills import load_skills, select_relevant_skills
 import logging
 import re
 import os
@@ -67,7 +68,9 @@ log.info(f"[FILE] Log file: {LOG_FILE}")
 OLLAMA_URL = "http://192.168.0.39:1234/v1/chat/completions"
 MCP_URL = "http://localhost:8000"
 
-SYSTEM_PROMPT = """You are an autonomous penetration testing agent.
+SYSTEM_PROMPT = """You are an autonomous penetration testing and offensive cybersecurity agent.
+You perform real penetration tests, vulnerability assessments, and offensive security operations.
+You think like an attacker. You chain tools intelligently. You adapt based on results.
 
 AVAILABLE TOOLS:
 - run_masscan: Fast port scanner
@@ -84,6 +87,20 @@ AVAILABLE TOOLS:
 - run_enum4linux: SMB/Samba enumeration (params: target)
 - run_medusa: Fast credential brute forcing
 - run_ncrack: Network authentication cracking (params: target, service, wordlist)
+- run_subfinder: Subdomain enumeration (params: domain)
+- run_nuclei: Vulnerability template scanner (params: target, templates, severity)
+- run_katana: Web crawler and attack surface mapper (params: target, depth)
+- run_ffuf: Fast web fuzzer for dirs, params, vhosts (params: url, wordlist, param)
+- run_httpx: HTTP probe - status, titles, tech detection (params: target, flags)
+
+RECON WORKFLOW - follow this order for web targets:
+1. run_httpx first — probe for live hosts, status codes, tech stack
+2. run_subfinder — enumerate subdomains before scanning
+3. run_katana — crawl the target, map attack surface
+4. run_ffuf — fuzz dirs/params on discovered endpoints
+5. run_nuclei — run vuln templates after recon is complete
+6. run_nikto — deep web vuln scan on confirmed live targets
+7. run_sqlmap — only on endpoints with parameters
 
 HYDRA SERVICE NAMES - use EXACTLY these:
 - FTP: "ftp"
@@ -162,10 +179,15 @@ def parse_model_response(raw):
 
 def call_model(goal):
     log.info(f"[MODEL] Thinking about: {goal[:80]}...")
+    relevant_skills = select_relevant_skills(goal)
+    skill_text = load_skills(relevant_skills) if relevant_skills else ""
+    if skill_text:
+        log.info(f"[SKILLS] Injecting: {relevant_skills}")
+    dynamic_prompt = SYSTEM_PROMPT + (f"\n\n# Relevant Skills\n{skill_text}" if skill_text else "")
     payload = {
-        "model": "qwen2.5-14b-instruct-abliterated-abliterated",
+        "model": "huihui-gemma-4-12b-it-abliterated-i1",
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": dynamic_prompt},
             {"role": "user", "content": goal}
         ],
         "temperature": 0.1,
@@ -239,7 +261,7 @@ def run_attack_loop(target, memory, cache=None):
         success = False
         for step in chain:
             # ── Negative cache gate ──────────────────────────────
-            if cache and not cache.should_attempt(step, engagement_id=f"{SESSION_ID}_{target}"):
+            if cache and not cache.should_attempt(step):
                 log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
                 continue
             # ────────────────────────────────────────────────────
@@ -247,12 +269,12 @@ def run_attack_loop(target, memory, cache=None):
             if ok and output and any(x in output.lower() for x in ["password", "login", "session", "shell", "success", "found", "valid"]):
                 success = True
                 if cache:
-                    cache.record_success(step, engagement_id=f"{SESSION_ID}_{target}")
+                    cache.record_success(step)
                 memory.add_finding(port, step.get("tool"), output[:2000])
             elif not ok:
                 if cache:
                     reason = f"tool={step.get('tool')} port={port} output_empty={not bool(output)}"
-                    cache.record_failure(step, reason=reason, engagement_id=f"{SESSION_ID}_{target}")
+                    cache.record_failure(step, reason=reason)
         memory.mark_tried(port, success=success)
     log.info(f"[ATTACK] Attack loop complete")
     summary = memory.summary()
@@ -276,12 +298,12 @@ def run_full_engagement(target):
 def execute_chain(chain, cache=None):
     for i, step in enumerate(chain, 1):
         log.info(f"[CHAIN] 🔗 Step {i} of {len(chain)}: {step.get('tool')}")
-        if cache and not cache.should_attempt(step, engagement_id=f"{SESSION_ID}_{target}"):
+        if cache and not cache.should_attempt(step):
             log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
             continue
         output, ok = execute_step(step)
         if not ok and cache:
-            cache.record_failure(step, reason=f"manual chain failure, step {i}", engagement_id=f"{SESSION_ID}_{target}")
+            cache.record_failure(step, reason=f"manual chain failure, step {i}")
 
 def main():
     cache = NegativeCache()
