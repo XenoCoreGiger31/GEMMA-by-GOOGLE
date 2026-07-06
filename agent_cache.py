@@ -6,7 +6,7 @@ from datetime import datetime
 
 # ============================================================
 # 🧠 PERSISTENT NEGATIVE EXPERIENCE CACHE
-# PenMaster Security — Sovereign Agent Layer v1
+# GEMMA-by-GOOGLE — Sovereign Agent Layer v1
 #
 # Analogy: a veteran soldier's scar tissue.
 # The agent remembers every failed approach across ALL sessions.
