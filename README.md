@@ -69,7 +69,7 @@ Built on Kali Linux with a local LLM (Gemma Powered by Google via LM Studio) and
 - 🧩 Adaptive skill injection — loads relevant attack playbooks into the prompt based on the current goal
 -  Self aware and self correcting harnessing
 -----
-## Tool Arsenal (23 Tools)
+## Tool Arsenal (24 Tools)
 
 | Tool | Purpose |
 |------|---------|
@@ -96,7 +96,7 @@ Built on Kali Linux with a local LLM (Gemma Powered by Google via LM Studio) and
 | run_ffuf | Web fuzzing |
 | run_httpx | HTTP probing and fingerprinting |
 | run_sherlock | Username OSINT reconnaissance across 90+ platforms |
-
+| run_attacker | Brute force, SQL Injection etc.
 
 -----
 
