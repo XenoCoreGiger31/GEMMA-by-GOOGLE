@@ -171,10 +171,10 @@ def parse_model_response(raw):
     try:
         cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
         start = cleaned.find("{")
-        end = cleaned.rfind("}") + 1
-        if start == -1 or end == 0:
+        if start == -1:
             raise ValueError("No JSON found")
-        return json.loads(cleaned[start:end])
+        obj, _ = json.JSONDecoder().raw_decode(cleaned, start)
+        return obj
     except Exception as e:
         log.error(f"[ERROR] JSON parse failed: {e}")
         return {"chain": []}

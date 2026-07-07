@@ -25,8 +25,16 @@ def call_tool(tool: str, params: dict) -> dict:
     return response.json()
 
 
-def run_attacker(task: dict, engagement_id: str, target: str) -> AgentMessage:
+def run_attacker(task: dict, engagement_id: str, target: str, context: str = "") -> AgentMessage:
     goal_text = task["goal"].lower()
+    import re
+    search_keyword = target
+    if context and context.strip():
+        match = re.search(r"open\s+\S+\s+(\S+(?:\s+[\d.]+)?)", context)
+        if match:
+            search_keyword = match.group(1).strip()
+        else:
+            search_keyword = context.strip()[:100]
 
     if "sql" in goal_text or "injection" in goal_text:
         tool = "run_sqlmap"
@@ -36,7 +44,7 @@ def run_attacker(task: dict, engagement_id: str, target: str) -> AgentMessage:
         params = {"target": target, "service": "ssh"}
     elif "exploit" in goal_text:
         tool = "run_searchsploit"
-        params = {"keyword": target}
+        params = {"keyword": search_keyword}
     elif "idor" in goal_text or "object reference" in goal_text:
         tool = "run_ffuf"
         params = {"url": target, "wordlist": "/usr/share/seclists/Discovery/Web-Content/common.txt"}
@@ -51,7 +59,7 @@ def run_attacker(task: dict, engagement_id: str, target: str) -> AgentMessage:
         params = {"target": target, "flags": "-status-code -title -tech-detect"}
     else:
         tool = "run_searchsploit"
-        params = {"keyword": target}
+        params = {"keyword": search_keyword}
 
     try:
         result_data = call_tool(tool, params)

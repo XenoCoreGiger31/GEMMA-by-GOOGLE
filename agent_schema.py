@@ -24,6 +24,7 @@ class AgentName(str, Enum):
     VULN_DISCOVERY = "vuln_discovery"
     ATTACKER = "attacker"
     DEBUGGER = "debugger"
+    VALIDATOR = "validator"
 
 
 class TaskStatus(str, Enum):
