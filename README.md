@@ -68,35 +68,38 @@ Built on Kali Linux with a local LLM (Gemma Powered by Google via LM Studio) and
 - 🔒 100% local — Gemma4-12B running in LM Studio, nothing leaves your machine
 - 🧩 Adaptive skill injection — loads relevant attack playbooks into the prompt based on the current goal
 -  Self aware and self correcting harnessing
+
 -----
-## Tool Arsenal (24 Tools)
+
+## Tool Arsenal (25 Tools)
 
 | Tool | Purpose |
 |------|---------|
-| run_masscan | Fast port discovery |
-| run_nmap | Deep service/version scanning |
-| run_nikto | Web vulnerability scanning |
-| run_sqlmap | SQL injection testing |
-| run_hydra | Credential brute forcing |
-| run_ncrack | Network authentication cracking |
-| run_medusa | Fast parallel brute forcing |
-| run_searchsploit | Exploit lookup |
-| run_gobuster | Web directory brute forcing |
-| run_enum4linux | SMB/Samba enumeration |
-| run_john | Hash cracking |
-| run_curl | HTTP request testing |
-| run_wget | File retrieval |
-| run_netstat | Network connection analysis |
-| write_file | Write output to files |
-| read_file | Read file contents |
-| run_setoolkit | Social engineering attacks |
-| run_subfinder | Subdomain enumeration |
-| run_nuclei | Vulnerability template scanning |
-| run_katana | Web crawling |
-| run_ffuf | Web fuzzing |
-| run_httpx | HTTP probing and fingerprinting |
-| run_sherlock | Username OSINT reconnaissance across 90+ platforms |
-| run_attacker | Brute force, SQL Injection etc.
+|`run_masscan`|Fast port discovery|
+|`run_nmap`|Deep service/version scanning|
+|`run_nikto`|Web vulnerability scanning|
+|`run_sqlmap`|SQL injection testing|
+|`run_hydra`|Credential brute forcing|
+|`run_ncrack`|Network authentication cracking|
+|`run_medusa`|Fast parallel brute forcing|
+|`run_searchsploit`|Exploit lookup|
+|`run_gobuster`|Web directory brute forcing|
+|`run_enum4linux`|SMB/Samba enumeration|
+|`run_john`|Hash cracking|
+|`run_curl`|HTTP request testing|
+|`run_wget`|File retrieval|
+|`run_netstat`|Network connection analysis|
+|`write_file`|Write output to files|
+|`read_file`|Read file contents|
+|`run_setoolkit`|Social engineering attacks|
+|`run_subfinder`|Subdomain enumeration|
+|`run_nuclei`|Vulnerability template scanning|
+|`run_katana`|Web crawling|
+|`run_ffuf`|Web fuzzing|
+|`run_httpx`|HTTP probing and fingerprinting|
+|`run_sherlock`|Username OSINT reconnaissance across 90+ platforms|
+|`run_wafw00f`|WAF/security-solution fingerprinting|
+|`run_attacker`|Brute force, SQL Injection etc.|
 
 -----
 
@@ -119,12 +122,12 @@ The negative experience cache fingerprints every tool call. If it fails once, it
 
 ## Stack
 
-- **Model**: Gemma4-12B Instruct Abliterated (GGUF via LM Studio)
+- **Model**: Gemma4-12B Instruct Abliterated (GGUF via LM Studio) — works with any local model/agent of your choosing
 - **Agent**: Python autonomous loop with MCP tool calls
 - **MCP Server**: Flask on port 8000
 - **OS**: Kali Linux (UTM on Apple Silicon M1)
 - **Hardware**: MacBook Pro M1 16GB RAM
-
+- **Model/Agent is users discretion. Works with any model
 -----
 
 ## Usage
