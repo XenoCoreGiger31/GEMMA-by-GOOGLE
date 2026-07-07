@@ -92,15 +92,17 @@ AVAILABLE TOOLS:
 - run_katana: Web crawler and attack surface mapper (params: target, depth)
 - run_ffuf: Fast web fuzzer for dirs, params, vhosts (params: url, wordlist, param)
 - run_httpx: HTTP probe - status, titles, tech detection (params: target, flags)
+- run_wafw00f: WAF/security-solution fingerprinting (params: target)
 
 RECON WORKFLOW - follow this order for web targets:
 1. run_httpx first — probe for live hosts, status codes, tech stack
-2. run_subfinder — enumerate subdomains before scanning
-3. run_katana — crawl the target, map attack surface
-4. run_ffuf — fuzz dirs/params on discovered endpoints
-5. run_nuclei — run vuln templates after recon is complete
-6. run_nikto — deep web vuln scan on confirmed live targets
-7. run_sqlmap — only on endpoints with parameters
+2. run_wafw00f — fingerprint WAF/security solution before aggressive scans
+3. run_subfinder — enumerate subdomains before scanning
+4. run_katana — crawl the target, map attack surface
+5. run_ffuf — fuzz dirs/params on discovered endpoints
+6. run_nuclei — run vuln templates after recon is complete
+7. run_nikto — deep web vuln scan on confirmed live targets
+8. run_sqlmap — only on endpoints with parameters
 
 HYDRA SERVICE NAMES - use EXACTLY these:
 - FTP: "ftp"

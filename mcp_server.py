@@ -74,7 +74,7 @@ SUPPORTED_TOOLS = [
     "run_sqlmap", "run_nikto", "run_hydra", "run_searchsploit",
     "run_curl", "run_wget", "write_file", "read_file",
     "run_john", "run_ncrack", "run_gobuster", "run_enum4linux", "run_medusa", "run_setoolkit",
-    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock", "run_exploit"
+    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock", "run_exploit", "run_wafw00f"
 ]
 
 # Kali tools that may need sudo
@@ -129,6 +129,11 @@ class ToolExecutor:
                 params.get("target", ""),
                 params.get("port", "80"),
                 params.get("ssl", False)
+            )
+        
+        elif tool == "run_wafw00f":
+            return self._run_wafw00f(
+                params.get("target", "")
             )
         
         elif tool == "run_hydra":
@@ -394,6 +399,19 @@ class ToolExecutor:
         target = target.replace("http://", "").replace("https://", "").rstrip("/")
         command = f"nikto -h {target} -p {port} -Format txt"
         
+        result = self._execute_command(command)
+        return result
+    
+    def _run_wafw00f(self, target):
+        """Execute wafw00f for WAF/security-solution fingerprinting"""
+        if not target:
+            return {
+                "status": "error",
+                "error_type": "invalid_params",
+                "message": "No target specified for wafw00f"
+            }
+        
+        command = f"wafw00f {target} -a"
         result = self._execute_command(command)
         return result
     

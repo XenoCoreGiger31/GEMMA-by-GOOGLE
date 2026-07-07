@@ -37,6 +37,18 @@ def run_attacker(task: dict, engagement_id: str, target: str) -> AgentMessage:
     elif "exploit" in goal_text:
         tool = "run_searchsploit"
         params = {"keyword": target}
+    elif "idor" in goal_text or "object reference" in goal_text:
+        tool = "run_ffuf"
+        params = {"url": target, "wordlist": "/usr/share/seclists/Discovery/Web-Content/common.txt"}
+    elif "ssrf" in goal_text or "server-side request" in goal_text:
+        tool = "run_curl"
+        params = {"target": target}
+    elif "xss" in goal_text or "cross-site scripting" in goal_text:
+        tool = "run_nuclei"
+        params = {"target": target, "templates": "xss", "severity": "medium,high,critical"}
+    elif "auth" in goal_text or "authentication" in goal_text or "session" in goal_text:
+        tool = "run_httpx"
+        params = {"target": target, "flags": "-status-code -title -tech-detect"}
     else:
         tool = "run_searchsploit"
         params = {"keyword": target}

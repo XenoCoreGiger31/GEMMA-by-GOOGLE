@@ -51,6 +51,9 @@ def run_vuln_discovery(task: dict, engagement_id: str, target: str) -> AgentMess
     elif "director" in goal_text or "file" in goal_text:
         tool = "run_gobuster"
         params = {"target": target}
+    elif "waf" in goal_text or "firewall" in goal_text:
+        tool = "run_wafw00f"
+        params = {"target": target}
     else:
         tool = "run_nikto"
         params = {"target": target}
