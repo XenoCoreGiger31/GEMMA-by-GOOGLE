@@ -74,7 +74,8 @@ SUPPORTED_TOOLS = [
     "run_sqlmap", "run_nikto", "run_hydra", "run_searchsploit",
     "run_curl", "run_wget", "write_file", "read_file",
     "run_john", "run_ncrack", "run_gobuster", "run_enum4linux", "run_medusa", "run_setoolkit",
-    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock", "run_exploit", "run_wafw00f"
+    "run_subfinder", "run_nuclei", "run_katana", "run_ffuf", "run_httpx", "run_sherlock", "run_exploit", "run_wafw00f",
+    "run_shodan", "run_phoneinfoga", "run_cloudfox"
 ]
 
 # Kali tools that may need sudo
@@ -134,6 +135,23 @@ class ToolExecutor:
         elif tool == "run_wafw00f":
             return self._run_wafw00f(
                 params.get("target", "")
+            )
+
+        elif tool == "run_shodan":
+            return self._run_shodan(
+                params.get("query", "")
+            )
+
+        elif tool == "run_phoneinfoga":
+            return self._run_phoneinfoga(
+                params.get("number", "")
+            )
+
+
+        elif tool == "run_cloudfox":
+            return self._run_cloudfox(
+                params.get("profile", "default"),
+                params.get("command_type", "all-checks")
             )
         
         elif tool == "run_hydra":
@@ -201,7 +219,7 @@ class ToolExecutor:
         elif tool == "run_sherlock":
             return self._run_sherlock(params.get("username", ""))
         elif tool == "run_exploit":
-            return self._run_exploit_runtime(params.get("code", ""), params.get("timeout", 30))
+            return self._run_exploit_runtime(params.get("code", ""), params.get("timeout", 30), params.get("phase", "test"), params.get("target"))
 
         elif tool == "run_gobuster":
             return self._run_gobuster(params.get("target", ""), params.get("wordlist", ""), params.get("mode", "dir"))
@@ -414,6 +432,25 @@ class ToolExecutor:
         command = f"wafw00f {target} -a"
         result = self._execute_command(command)
         return result
+
+    def _run_shodan(self, query):
+        if not query:
+            return {"status": "error", "error_type": "invalid_params", "message": "No query specified"}
+        command = f"shodan host {query}"
+        return self._execute_command(command)
+
+    def _run_phoneinfoga(self, number):
+        if not number:
+            return {"status": "error", "error_type": "invalid_params", "message": "No phone number specified"}
+        command = f"phoneinfoga scan -n {number}"
+        return self._execute_command(command)
+
+
+    def _run_cloudfox(self, profile, command_type):
+        ct = command_type or "all-checks"
+        prof = profile or "default"
+        command = f"cloudfox aws --profile {prof} {ct}"
+        return self._execute_command(command)
     
     def _run_hydra(self, target, service, username, wordlist, threads):
         """Execute hydra for credential testing"""
@@ -468,7 +505,7 @@ class ToolExecutor:
         result = self._execute_command(command)
         return result
 
-    def _run_exploit_runtime(self, code, timeout=30):
+    def _run_exploit_runtime(self, code, timeout=30, phase="test", target=None):
         """Execute a custom Python exploit/PoC script in a sandboxed, time-limited subprocess"""
         if not code:
             return {
@@ -483,8 +520,12 @@ class ToolExecutor:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(code)
             script_path = f.name
+        _os.chmod(script_path, 0o644)  # so podman userns can read the mounted script
 
-        command = f"timeout {timeout} python3 {script_path}"
+        runner = "/home/bigkali/GEMMA-by-GOOGLE/sandbox/run_sandbox.py"
+        command = f"python3 {runner} {script_path} --phase {phase}"
+        if target:
+            command += f" --target {target}"
         result = self._execute_command(command)
 
         try:
@@ -492,6 +533,35 @@ class ToolExecutor:
         except OSError:
             pass
 
+        # False-success guard: runner can exit 0 while the sandboxed
+        # script errored or produced nothing. Parse the contract by hand.
+        raw = result.get("stdout", "") if isinstance(result, dict) else ""
+        inner_exit = None
+        for ln in raw.splitlines():
+            t = ln.strip()
+            if t.startswith("=== EXIT ") and t.endswith("==="):
+                mid = t[9:-3].strip()
+                if mid.isdigit():
+                    inner_exit = int(mid)
+        inner_stdout = ""
+        if "=== STDOUT ===" in raw and "=== STDERR ===" in raw:
+            inner_stdout = raw.split("=== STDOUT ===", 1)[1].split("=== STDERR ===", 1)[0].strip()
+        placeholder = bool(target) and "TARGET_IP" in (code or "")
+        if isinstance(result, dict):
+            if inner_exit is None:
+                result["status"] = "error"; result["error_type"] = "sandbox_contract_missing"
+                result["message"] = "No EXIT marker from sandbox; treating as failure"
+            elif inner_exit != 0:
+                result["status"] = "error"; result["error_type"] = "script_error"
+                result["message"] = "Sandboxed script exited non-zero"
+            elif not inner_stdout:
+                result["status"] = "error"; result["error_type"] = "empty_output"
+                result["message"] = "No stdout from script; no-op treated as failure"
+            elif placeholder:
+                result["status"] = "error"; result["error_type"] = "placeholder_target"
+                result["message"] = "Placeholder TARGET_IP in code; not a real run"
+            else:
+                result["status"] = "success"
         return result
     
     def _run_wget(self, url, output, recursive):

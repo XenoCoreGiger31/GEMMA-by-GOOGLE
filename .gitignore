@@ -8,3 +8,4 @@ logs/
 reports/
 agent.log
 *backup*.py
+failure_cache.json

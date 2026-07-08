@@ -79,7 +79,8 @@ AVAILABLE TOOLS:
 - run_nikto: Web vulnerability scanner
 - run_hydra: Credential brute forcing (params: target, service, username, wordlist)
 - run_searchsploit: Find exploits
-- run_command: Execute any shell command
+- run_command: Execute any shell command (params: command)
+- run_exploit: LAST RESORT ONLY. Write a custom Python exploit script when no standard tool above can accomplish the objective. Requires human approval before running. (params: code = the full Python script as a string, target = ip or ip:port). Do NOT use for tasks a standard tool handles — only when standard tooling is insufficient.
 - write_file: Write content to files
 - read_file: Read file contents
 - run_john: Hash cracking (needs hash_file param)
@@ -93,6 +94,9 @@ AVAILABLE TOOLS:
 - run_ffuf: Fast web fuzzer for dirs, params, vhosts (params: url, wordlist, param)
 - run_httpx: HTTP probe - status, titles, tech detection (params: target, flags)
 - run_wafw00f: WAF/security-solution fingerprinting (params: target)
+- run_shodan: Shodan host lookup for internet-exposed services and open ports (params: query = ip or hostname)
+- run_phoneinfoga: phone number OSINT footprinting (params: number = phone number in international format)
+- run_cloudfox: AWS cloud attack-surface enumeration (params: profile = optional AWS profile, command_type = optional, defaults to all-checks)
 
 RECON WORKFLOW - follow this order for web targets:
 1. run_httpx first — probe for live hosts, status codes, tech stack
@@ -122,9 +126,17 @@ HYDRA WORDLISTS - use these in order of speed:
 SEARCHSPLOIT: always use "keyword" param with service name only e.g. "vsftpd 2.3.4"
 
 RESPONSE FORMAT - VALID JSON ONLY:
-{"chain": [{"tool": "tool_name", "param1": "value1"}]}
+Output ONE JSON object. It has ONE key "chain" whose value is an array.
+Every tool step is an object INSIDE that single array, separated by commas.
+Do NOT open a new array or object outside "chain".
 
-NO explanations. NO markdown. ONLY JSON."""
+Single step:
+{"chain": [{"tool": "run_nmap", "target": "10.0.0.1", "flags": "-sV"}]}
+
+Multiple steps (note the commas BETWEEN objects, all inside ONE array):
+{"chain": [{"tool": "run_nmap", "target": "10.0.0.1"}, {"tool": "run_exploit", "code": "print(1)", "target": "10.0.0.1"}]}
+
+NO explanations. NO markdown. NO trailing commas. ONLY the single JSON object."""
 
 
 class AgentMemory:
@@ -170,13 +182,45 @@ class AgentMemory:
 def parse_model_response(raw):
     try:
         cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
+        # sanitize sloppy model JSON before decode
+        cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"')  # smart double quotes
+        cleaned = cleaned.replace("\u2018", "'").replace("\u2019", "'")  # smart single quotes
+        cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)  # trailing commas before } or ]
         start = cleaned.find("{")
         if start == -1:
             raise ValueError("No JSON found")
-        obj, _ = json.JSONDecoder().raw_decode(cleaned, start)
-        return obj
+        # first, try the clean path: one well-formed object
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(cleaned, start)
+            if isinstance(obj, dict) and "chain" in obj:
+                return obj
+        except json.JSONDecodeError:
+            pass
+        # salvage path: model mangled the array brackets.
+        # walk the string, decode every standalone {...} object, keep tool steps.
+        dec = json.JSONDecoder()
+        idx = 0
+        steps = []
+        while idx < len(cleaned):
+            brace = cleaned.find("{", idx)
+            if brace == -1:
+                break
+            try:
+                o, end = dec.raw_decode(cleaned, brace)
+                if isinstance(o, dict) and "tool" in o:
+                    steps.append(o)
+                idx = end
+            except json.JSONDecodeError:
+                idx = brace + 1
+        if steps:
+            log.warning(f"[PARSE] Salvaged {len(steps)} tool step(s) from malformed JSON")
+            return {"chain": steps}
+        raise ValueError("no salvageable tool steps")
     except Exception as e:
         log.error(f"[ERROR] JSON parse failed: {e}")
+        with open("/tmp/bad_json.txt", "w") as _f:
+            _f.write(raw)
+        log.error("[ERROR] Raw model output dumped to /tmp/bad_json.txt")
         return {"chain": []}
 
 def call_model(goal):
@@ -213,8 +257,72 @@ def extract_ports(output):
             found.append(port)
     return found
 
+def _flush_stdin():
+    """Drop any stale buffered input so a gate prompt truly waits for the operator."""
+    try:
+        import sys, termios
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)
+    except Exception:
+        pass
+
+
+def _run_exploit_gated(step):
+    """Two-gate human approval for sandboxed exploit scripts."""
+    target = step.get("target")
+
+    # ENTRY GATE — authorize entering the sandbox at all
+    print("\n" + "=" * 60)
+    print("1  SANDBOX AUTHORIZATION REQUEST")
+    print("Standard tooling has proven insufficient for the current objective.")
+    print("Requesting authorization to enter the sandboxed execution")
+    print("environment and author a custom exploit script.")
+    print("=" * 60)
+    _flush_stdin()
+    if input("Proceed? [y/N] ").strip().lower() != "y":
+        log.info("[GATE] Sandbox entry declined by operator")
+        return "", False
+
+    # TEST PHASE — isolated, no network
+    test_step = dict(step); test_step["phase"] = "test"; test_step.pop("target", None)
+    log.info("[GATE] Running script in isolated test phase (no network)")
+    r = requests.post(MCP_URL, json=test_step, timeout=7200).json()
+    test_out = r.get("stdout", "")
+    print("\n--- TEST PHASE OUTPUT (isolated, no network) ---")
+    print(test_out)
+    print("--- END TEST OUTPUT ---")
+
+    # FIRE GATE — authorize live attack against target
+    print("\n" + "=" * 60)
+    print("1  ATTACK EXECUTION AUTHORIZATION")
+    print("Custom script authored and validated in isolated test phase.")
+    print("Review the test output above.")
+    print(f"Authorize execution against target {target}?")
+    print("=" * 60)
+    _flush_stdin()
+    if input("Authorize? [y/N] ").strip().lower() != "y":
+        log.info("[GATE] Attack execution declined by operator")
+        return "", False
+
+    log.info("[GATE] Authorized. Running attack phase against target")
+    attack_step = dict(step); attack_step["phase"] = "attack"
+    r = requests.post(MCP_URL, json=attack_step, timeout=7200).json()
+    out = r.get("stdout", "")
+    err = r.get("stderr", "")
+    ok = r.get("status", "") == "success"
+    print("\n--- ATTACK PHASE OUTPUT (target: %s) ---" % target)
+    print(out if out else "(no stdout)")
+    if err:
+        print("--- stderr ---")
+        print(err)
+    print("--- END ATTACK OUTPUT ---\n")
+    log.info("[GATE] Attack phase %s" % ("succeeded" if ok else "failed"))
+    return out, ok
+
+
 def execute_step(step):
     tool = step.get("tool", "unknown")
+    if tool == "run_exploit":
+        return _run_exploit_gated(step)
     start_time = datetime.now()
     log.info(f"[TOOL] Running → {tool} | params: { {k:v for k,v in step.items() if k != 'tool'} }")
     try:
