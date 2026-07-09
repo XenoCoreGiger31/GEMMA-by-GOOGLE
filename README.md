@@ -141,9 +141,9 @@ doesn't work.
 
 ## How It Was Built
 
-HALO was built solo over the course of a year by a self-taught developer and
-security researcher. The multi-agent core came together one specialist at a time,
-each verified against a real target before moving on:
+HALO was built solo, from the ground up, in under six months by a self-taught
+developer and security researcher. The multi-agent core came together one
+specialist at a time, each verified against a real target before moving on:
 
 - **Day 1 — Shared language:** a common message schema (`agent_schema.py`) so the agents can talk to each other
 - **Day 2 — Planner:** turns a goal into an ordered plan, verified against live LM Studio
