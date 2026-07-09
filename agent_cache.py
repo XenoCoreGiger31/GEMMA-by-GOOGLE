@@ -14,7 +14,8 @@ from datetime import datetime
 # Fail twice → permanently blacklisted. Never wasted on again.
 # ============================================================
 
-CACHE_DIR = "/home/bigkali/GEMMA-by-GOOGLE"
+# Default preserves the original author's environment; override via HALO_CACHE_DIR.
+CACHE_DIR = os.environ.get("HALO_CACHE_DIR", "/home/bigkali/GEMMA-by-GOOGLE")
 CACHE_FILE = os.path.join(CACHE_DIR, "failure_cache.json")
 
 log = logging.getLogger("agent")

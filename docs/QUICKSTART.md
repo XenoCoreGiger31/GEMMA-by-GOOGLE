@@ -50,9 +50,28 @@ python3 agent_loop.py
 On exit (or `Ctrl+C`), the agent runs `report_generator.py` to produce an HTML
 report of the session.
 
+## Environment overrides
+
+A few paths default to the original author's environment but can be overridden
+with environment variables — no code edits needed:
+
+| Variable | Overrides | Default |
+|----------|-----------|---------|
+| `HALO_LOG_DIR` | Agent/MCP log directory | `/home/bigkali/security-agent/logs` |
+| `HALO_CACHE_DIR` | Negative-experience cache location | `/home/bigkali/GEMMA-by-GOOGLE` |
+| `HALO_HTTPX_BIN` | Path to the `httpx` binary | `/home/bigkali/go/bin/httpx` |
+| `HALO_SHERLOCK_BIN` | Path to the `sherlock` binary | `/home/bigkali/.local/bin/sherlock` |
+
+For example:
+
+```bash
+export HALO_LOG_DIR="$HOME/halo/logs"
+export HALO_HTTPX_BIN="$(command -v httpx)"
+export HALO_SHERLOCK_BIN="$(command -v sherlock)"
+```
+
 ## Notes
 
-- Some paths in the source (log directory, tool binary locations) are set for
-  the original author's environment. Adjust the constants near the top of
-  `agent_loop.py`, `mcp_server.py`, and `agent_cache.py` to match your machine.
+- With no variables set, all paths resolve to their defaults, so the agent runs
+  as-is on the original author's setup.
 - Only test systems you own or have **explicit written authorization** to test.

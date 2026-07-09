@@ -7,7 +7,8 @@ import os
 from datetime import datetime
 from agent_cache import NegativeCache
 
-LOG_DIR = "/home/bigkali/security-agent/logs"
+# Default preserves the original author's environment; override via HALO_LOG_DIR.
+LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
