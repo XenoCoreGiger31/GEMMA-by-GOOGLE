@@ -6,7 +6,7 @@
 
 # 🔐 GEMMA-by-GOOGLE — HALO
 
-**Autonomous AI penetration-testing agent — fully local, no cloud, no API keys.**
+**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a Flask MCP tool server through recon, attack, and reporting. No cloud, no API keys.**
 
 [What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Contributing](CONTRIBUTING.md)
 
