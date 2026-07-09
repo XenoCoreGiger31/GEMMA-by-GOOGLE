@@ -7,7 +7,8 @@ import os
 from datetime import datetime
 from agent_cache import NegativeCache
 
-LOG_DIR = "/home/bigkali/security-agent/logs"
+# Default preserves the original author's environment; override via HALO_LOG_DIR.
+LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -451,7 +452,8 @@ def main():
         except KeyboardInterrupt:
             log.info("[START] Interrupted by user")
             import subprocess
-            subprocess.run(["python3", "/home/bigkali/security-agent/report_generator.py", LOG_FILE])
+            report_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_generator.py")
+            subprocess.run(["python3", report_script, LOG_FILE])
             break
         except Exception as e:
             log.error(f"[ERROR] 😭🔥 Fatal error: {e}")

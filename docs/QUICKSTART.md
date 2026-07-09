@@ -1,0 +1,77 @@
+# Quickstart
+
+Get the HALO agent running against a target in a few minutes. For full
+environment hardening (firewall, IDS), see [SETUP.md](SETUP.md).
+
+## Prerequisites
+
+- Kali Linux (or another distro with the security tools on `PATH`)
+- Python 3.10+
+- [LM Studio](https://lmstudio.ai/) with the **Gemma 4-12B** model loaded and its
+  local server running
+- The security tools you plan to use (nmap, masscan, sqlmap, nuclei, etc.)
+
+## 1. Clone
+
+```bash
+git clone https://github.com/XenoCoreGiger31/GEMMA-by-GOOGLE.git
+cd GEMMA-by-GOOGLE
+```
+
+## 2. Install Python dependencies
+
+```bash
+python3 -m pip install requests flask
+```
+
+## 3. Point the agent at your LM Studio server
+
+Confirm the model endpoint in your LM Studio install (default is
+`http://localhost:1234`) and make sure the model is loaded and serving.
+
+## 4. Start the MCP tool server
+
+```bash
+python3 mcp_server.py    # Flask server on port 8000
+```
+
+## 5. Run the agent
+
+In a second terminal:
+
+```bash
+python3 agent_loop.py
+
+>>> engage 192.168.64.3    # full autonomous recon + attack loop
+>>> run nmap on 10.0.0.1   # single-goal query
+>>> exit                   # triggers HTML report generation
+```
+
+On exit (or `Ctrl+C`), the agent runs `report_generator.py` to produce an HTML
+report of the session.
+
+## Environment overrides
+
+A few paths default to the original author's environment but can be overridden
+with environment variables — no code edits needed:
+
+| Variable | Overrides | Default |
+|----------|-----------|---------|
+| `HALO_LOG_DIR` | Agent/MCP log directory | `/home/bigkali/security-agent/logs` |
+| `HALO_CACHE_DIR` | Negative-experience cache location | `/home/bigkali/GEMMA-by-GOOGLE` |
+| `HALO_HTTPX_BIN` | Path to the `httpx` binary | `/home/bigkali/go/bin/httpx` |
+| `HALO_SHERLOCK_BIN` | Path to the `sherlock` binary | `/home/bigkali/.local/bin/sherlock` |
+
+For example:
+
+```bash
+export HALO_LOG_DIR="$HOME/halo/logs"
+export HALO_HTTPX_BIN="$(command -v httpx)"
+export HALO_SHERLOCK_BIN="$(command -v sherlock)"
+```
+
+## Notes
+
+- With no variables set, all paths resolve to their defaults, so the agent runs
+  as-is on the original author's setup.
+- Only test systems you own or have **explicit written authorization** to test.

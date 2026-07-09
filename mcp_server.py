@@ -20,7 +20,8 @@ app = Flask(__name__)
 import os
 from datetime import datetime
 
-LOG_DIR = "/home/bigkali/security-agent/logs"
+# Path defaults preserve the original author's environment; override via env vars.
+LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 LOG_FILE = f"{LOG_DIR}/mcp_{SESSION_ID}.log"
@@ -522,7 +523,7 @@ class ToolExecutor:
             script_path = f.name
         _os.chmod(script_path, 0o644)  # so podman userns can read the mounted script
 
-        runner = "/home/bigkali/GEMMA-by-GOOGLE/sandbox/run_sandbox.py"
+        runner = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "sandbox", "run_sandbox.py")
         command = f"python3 {runner} {script_path} --phase {phase}"
         if target:
             command += f" --target {target}"
@@ -770,7 +771,8 @@ class ToolExecutor:
     def _run_httpx(self, target, flags):
         if not target:
             return {"status": "error", "error_type": "invalid_params", "message": "No target specified"}
-        command = f"/home/bigkali/go/bin/httpx -u {target}"
+        httpx_bin = os.environ.get("HALO_HTTPX_BIN", "/home/bigkali/go/bin/httpx")
+        command = f"{httpx_bin} -u {target}"
         if flags:
             command += f" {flags}"
         else:
@@ -781,7 +783,8 @@ class ToolExecutor:
     def _run_sherlock(self, username):
         if not username:
             return {"status": "error", "error_type": "invalid_params", "message": "No username specified"}
-        command = f"/home/bigkali/.local/bin/sherlock {username} --print-found --timeout 10"
+        sherlock_bin = os.environ.get("HALO_SHERLOCK_BIN", "/home/bigkali/.local/bin/sherlock")
+        command = f"{sherlock_bin} {username} --print-found --timeout 10"
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=120)
         return {"status": "success", "output": result.stdout, "stderr": result.stderr}
 

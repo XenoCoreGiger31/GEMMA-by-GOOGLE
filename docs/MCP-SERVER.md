@@ -22,7 +22,8 @@ Read file contents
 
 The server runs on localhost and communicates with the agent via MCP protocol.
 
-Update tools_manifest.json to add or modify available tools.
+Available tools are registered in the `SUPPORTED_TOOLS` list in `mcp_server.py`;
+add or modify entries there to change the tool arsenal.
 
 ## Security Considerations
 
