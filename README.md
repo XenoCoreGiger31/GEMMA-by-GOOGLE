@@ -1,164 +1,203 @@
-<img width="1021" height="720" alt="IMG_6600" src="https://github.com/user-attachments/assets/90e5df6a-487a-45f7-b42b-35b1948a3519" />
+<img width="1021" height="720" alt="HALO banner" src="https://github.com/user-attachments/assets/90e5df6a-487a-45f7-b42b-35b1948a3519" />
 
-<img width="1200" height="783" alt="Final_EDIT" src="https://github.com/user-attachments/assets/fe9aafc5-294b-43f5-b20f-4ff1305bf0d8" />
+<img width="1200" height="783" alt="HALO cover" src="https://github.com/user-attachments/assets/fe9aafc5-294b-43f5-b20f-4ff1305bf0d8" />
 
 <div align="center">
 
-[What It Does](#what-it-does) · [Tools](#tool-arsenal-23-tools) · [Architecture](#architecture) · [Stack](#stack) · [Usage](#usage) · [Contributing](CONTRIBUTING.md)
+# 🔐 GEMMA-by-GOOGLE — HALO
+
+**Autonomous AI penetration-testing agent — fully local, no cloud, no API keys.**
+
+[What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Contributing](CONTRIBUTING.md)
 
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Python](https://img.shields.io/badge/Python-3.10+-green)
-![Tools](https://img.shields.io/badge/Tools-23-red)
+![Tools](https://img.shields.io/badge/Tools-29-red)
 ![LM Studio](https://img.shields.io/badge/LM_Studio-Compatible-purple)
-![Hugging Face](https://img.shields.io/badge/Hugging_Face-automajicly-yellow)
-![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
 ![Platform](https://img.shields.io/badge/Platform-Kali_Linux-blueviolet)
+![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
 
 </div>
 
+---
 
+HALO is an autonomous security agent that runs inside a Linux environment driven
+by a local LLM — **Gemma 4-12B** (uncensored / abliterated) served through
+LM Studio. It plans, runs reconnaissance, chains attacks based on what it finds,
+and writes a professional pentest report on its own. Everything runs locally:
+no cloud, no API keys, nothing leaves your machine.
 
+One word starts an engagement: **`engage`**.
 
-
-# GEMMA-by-GOOGLE
-GEMMA-POWERED-BY-GOOGLE-CYBERSECURITY-AUTONOMOUS-AI: 
-
-An Autonomous AI agent inside of Linux environment with one of the worlds most cutting edge AI models, Googles GEMMA 4-12b Model. Fully uncensored/Abliterated. FULLY 
-
-LOCAL. FULLY FREE. With PERSISTENT negative cache learning, adaptation.Learning and self harnessing getting more self aware and intelligent with each engagement. 
-
-Autonomous recon, scanning and attack vector mapping,  - one word to start it all: ENGAGE. Attack-loops, reports, professional and comepletely local -this agent is fast, and 
-documents its exploits, findings and risk levels autonomously with clean precision and professionalism. Star if you like it, or open a PR and lets do something together. This is where ideas come alive and problems are solved!!
------
-
-license: mit
-language:
-
-- en
-  tags:
-- security
-- penetration-testing
-- autonomous-agent
-- mcp
-- kali-linux
-- llm
-- cybersecurity
-- red-team
-  library_name: other
-  pipeline_tag: text-generation
-
------
-
-# 🔐 HALO Cybersecurity
-
-**Autonomous AI-powered penetration testing agent — fully local, no cloud, no API keys.**
-
-Built on Kali Linux with a local LLM (Gemma Powered by Google via LM Studio) and a Flask-based MCP tool server. The agent runs recon, attacks, and generates professional pentest reports — all autonomously.
-
-![demo](./Final_EDIT.gif)
-
------
+---
 
 ## What It Does
 
-- 🔍 Autonomous recon — masscan + nmap to discover open ports and services
-- ⚔️ Autonomous attack loop — selects and chains tools based on what it finds
-- 🧠 Persistent negative experience cache — learns what fails across ALL sessions and never wastes time on it again
-- 📝 Auto-generates branded HTML pentest reports on session end (Ctrl+C)
-- 🔒 100% local — Gemma4-12B running in LM Studio, nothing leaves your machine
-- 🧩 Adaptive skill injection — loads relevant attack playbooks into the prompt based on the current goal
--  Self aware and self correcting harnessing
+- 🔍 **Autonomous recon** — masscan + nmap to discover open ports and services
+- ⚔️ **Autonomous attack loop** — selects and chains tools based on what it finds
+- 🧠 **Persistent negative-experience cache** — learns what fails across *all*
+  sessions and stops wasting cycles on proven dead ends
+- 🧩 **Adaptive skill injection** — loads relevant attack playbooks into the
+  prompt based on the current goal
+- 📝 **Automatic HTML reports** — compiles findings into a branded report on exit
+- 🔒 **100% local** — Gemma 4-12B in LM Studio; nothing leaves your machine
 
------
+---
 
-## Tool Arsenal (25 Tools)
+## Tool Arsenal
 
+29 tools sit behind the agent's decision loop, all routed through the same
+failure-caching layer. Registered in `SUPPORTED_TOOLS` in `mcp_server.py`.
+
+**Recon & OSINT**
 | Tool | Purpose |
 |------|---------|
-|`run_masscan`|Fast port discovery|
-|`run_nmap`|Deep service/version scanning|
-|`run_nikto`|Web vulnerability scanning|
-|`run_sqlmap`|SQL injection testing|
-|`run_hydra`|Credential brute forcing|
-|`run_ncrack`|Network authentication cracking|
-|`run_medusa`|Fast parallel brute forcing|
-|`run_searchsploit`|Exploit lookup|
-|`run_gobuster`|Web directory brute forcing|
-|`run_enum4linux`|SMB/Samba enumeration|
-|`run_john`|Hash cracking|
-|`run_curl`|HTTP request testing|
-|`run_wget`|File retrieval|
-|`run_netstat`|Network connection analysis|
-|`write_file`|Write output to files|
-|`read_file`|Read file contents|
-|`run_setoolkit`|Social engineering attacks|
-|`run_subfinder`|Subdomain enumeration|
-|`run_nuclei`|Vulnerability template scanning|
-|`run_katana`|Web crawling|
-|`run_ffuf`|Web fuzzing|
-|`run_httpx`|HTTP probing and fingerprinting|
-|`run_sherlock`|Username OSINT reconnaissance across 90+ platforms|
-|`run_wafw00f`|WAF/security-solution fingerprinting|
-|`run_attacker`|Brute force, SQL Injection etc.|
+| `run_subfinder` | Subdomain enumeration |
+| `run_httpx` | HTTP probing and fingerprinting |
+| `run_katana` | Web crawling |
+| `run_sherlock` | Username OSINT across 90+ platforms |
+| `run_shodan` | Internet-exposure intelligence lookups |
+| `run_phoneinfoga` | Phone-number OSINT |
+| `run_cloudfox` | Cloud-infrastructure enumeration |
+| `run_wafw00f` | WAF / security-solution fingerprinting |
 
------
+**Scanning**
+| Tool | Purpose |
+|------|---------|
+| `run_masscan` | Fast port discovery |
+| `run_nmap` | Deep service/version scanning |
+| `run_nikto` | Web vulnerability scanning |
+| `run_nuclei` | Template-based vulnerability scanning |
+| `run_netstat` | Network connection analysis |
+
+**Web & Fuzzing**
+| Tool | Purpose |
+|------|---------|
+| `run_gobuster` | Web directory brute forcing |
+| `run_ffuf` | Web fuzzing |
+| `run_curl` | HTTP request testing |
+| `run_wget` | File retrieval |
+
+**Exploitation**
+| Tool | Purpose |
+|------|---------|
+| `run_sqlmap` | SQL injection testing |
+| `run_searchsploit` | Exploit lookup |
+| `run_exploit` | Sandboxed execution of custom PoC scripts |
+| `run_setoolkit` | Social-engineering toolkit |
+
+**Credentials**
+| Tool | Purpose |
+|------|---------|
+| `run_hydra` | Credential brute forcing |
+| `run_ncrack` | Network authentication cracking |
+| `run_medusa` | Fast parallel brute forcing |
+| `run_john` | Hash cracking |
+
+**Enumeration & System**
+| Tool | Purpose |
+|------|---------|
+| `run_enum4linux` | SMB / Samba enumeration |
+| `run_command` | Arbitrary command execution |
+| `read_file` | Read file contents |
+| `write_file` | Write output to files |
+
+---
 
 ## Architecture
 
 ```
 agent_loop.py  ──►  mcp_server.py (Flask, port 8000)  ──►  security tools
      │
-     ├──►  agent_cache.py       (persistent negative experience cache)
-     └──►  report_generator.py  (auto HTML pentest report on exit)
+     ├──►  agent_cache.py         (persistent negative-experience cache)
+     ├──►  skills.py              (adaptive playbook injection)
+     └──►  report_generator.py    (auto HTML pentest report on exit)
 ```
 
------
+### Multi-agent layer
 
-## Sovereign Agent Layer v1
+Engagements are coordinated by a set of specialist agents that pass a shared
+message schema (`agent_schema.py`):
 
-The negative experience cache fingerprints every tool call. If it fails once, it gets one retry. Fail twice — permanently blacklisted and the agent subsequently moves on to next, more practical tool for the job. The agent never wastes cycles on dead ends it has already proven don’t work. Instead, the agent autonomously structures its learning through trial and error harnessing where it learns what will and will not work for each particular attack. If success, the agent prints a thumbs up to the user, denoting said success. Then arrives at the next attack mission.
+| Agent | Role |
+|-------|------|
+| `planner_agent.py` | Turns a goal into an ordered plan |
+| `orchestrator_agent.py` | Routes tasks to the right specialist |
+| `vuln_discovery_agent.py` | Surfaces candidate vulnerabilities |
+| `attacker_agent.py` | Branches into vuln-class specialists (SQLi, brute force, IDOR, SSRF, XSS, auth) |
+| `validator_agent.py` | Confirms findings against real evidence before they count |
+| `debugger_agent.py` | Diagnoses failed tool runs and adjusts |
 
------
+### Sovereign Agent Layer
+
+The negative-experience cache fingerprints every tool call. A call that fails
+gets one retry; fail twice and it is blacklisted, so the agent moves on to a
+more practical tool for the job. Over an engagement the agent structures its own
+trial-and-error learning — building context, avoiding repeated dead ends, and
+escalating intelligently — rather than re-running what it has already proven
+doesn't work.
+
+---
 
 ## Stack
 
-- **Model**: Gemma4-12B Instruct Abliterated (GGUF via LM Studio) — works with any local model/agent of your choosing
+- **Model**: Gemma 4-12B Instruct Abliterated (GGUF via LM Studio) — works with
+  any local model of your choosing
 - **Agent**: Python autonomous loop with MCP tool calls
 - **MCP Server**: Flask on port 8000
-- **OS**: Kali Linux (UTM on Apple Silicon M1)
-- **Hardware**: MacBook Pro M1 16GB RAM
-- **Model/Agent is users discretion. Works with any model
------
+- **OS**: Kali Linux (tested under UTM on Apple Silicon M1)
+- **Hardware reference**: MacBook Pro M1, 16 GB RAM
 
-## Usage
+---
+
+## Quickstart
+
+See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** for full setup. In short:
 
 ```bash
-cd /home/bigkali/security-agent
-python3 agent_loop.py
+git clone https://github.com/XenoCoreGiger31/GEMMA-by-GOOGLE.git
+cd GEMMA-by-GOOGLE
+python3 -m pip install requests flask
 
->>> engage 192.168.64.3    # full autonomous recon + attack
->>> run nmap on 10.0.0.1   # single goal query
->>> exit                   # triggers HTML report generation
+python3 mcp_server.py       # terminal 1 — Flask tool server on port 8000
+python3 agent_loop.py       # terminal 2 — the agent
+
+>>> engage 192.168.64.3     # full autonomous recon + attack
+>>> run nmap on 10.0.0.1    # single-goal query
+>>> exit                    # triggers HTML report generation
 ```
 
------
-Active development. New capabilities and upgrades pushed regularly.
+> **Note:** some paths in the source are set for the original author's
+> environment. Adjust the constants near the top of `agent_loop.py`,
+> `mcp_server.py`, and `agent_cache.py` to match your machine.
 
-Built by a self-taught developer and security researcher. One year in.
+---
 
------
+## Contributing
 
-* DISCLAIMER *
-* This is a community project  designed by independent developer and is not affiliated with or sponsored by the Google corp.
+Contributions from the security, AI, and Python communities are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md). Star the repo if it's useful to you, or open
+a PR and let's build something together.
 
-> ⚠️ **Content Warning:** This model is heavily abliterated and will respond 
-> to sensitive or explicit requests without restriction. Not suitable for 
-> minors or unmonitored environments. Use responsibly and legally.
+Actively developed by an independent, self-taught developer and security
+researcher. New capabilities are pushed regularly.
 
-> 🔒 **Legal Warning:** This tool is intended strictly for authorized 
-> penetration testing and security research on systems you own or have 
-> explicit written permission to test. Unauthorized use is illegal.
+---
+
+## Disclaimer & Legal
+
+This is a community project by an independent developer. It is **not affiliated
+with, endorsed by, or sponsored by Google LLC.** "Gemma" is a trademark of
+Google LLC.
+
+> ⚠️ **Content warning:** The referenced model is heavily abliterated and will
+> respond to sensitive requests without the usual guardrails. Use responsibly,
+> in appropriate environments only.
+
+> 🔒 **Legal warning:** This tool is intended strictly for authorized
+> penetration testing and security research on systems you own or have
+> **explicit written permission** to test. Unauthorized use is illegal.
 
 ## License
 
-MIT
+Released under the [MIT License](LICENSE).
