@@ -1,6 +1,7 @@
 __pycache__/
 *.log
 *.txt
+!requirements.txt
 *.backup
 *.bak
 logs/

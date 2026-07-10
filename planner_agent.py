@@ -21,8 +21,7 @@ import uuid
 import requests
 
 from agent_schema import AgentMessage, AgentName, TaskStatus
-
-LM_STUDIO_ENDPOINT = "http://192.168.0.39:1234/v1/chat/completions"
+from halo_config import MODEL_URL, MODEL_NAME, TOOL_TIMEOUT
 
 PLANNER_SYSTEM_PROMPT = """You are the Planner agent in a multi-agent penetration testing system called Halo.
 
@@ -51,7 +50,7 @@ def plan(goal: str, engagement_id: str) -> AgentMessage:
     and returns it wrapped in our standard AgentMessage envelope.
     """
     payload = {
-        "model": "local-model",
+        "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
             {"role": "user", "content": f"Engagement goal: {goal}"},
@@ -59,7 +58,7 @@ def plan(goal: str, engagement_id: str) -> AgentMessage:
         "temperature": 0.2,
     }
 
-    response = requests.post(LM_STUDIO_ENDPOINT, json=payload, timeout=60)
+    response = requests.post(MODEL_URL, json=payload, timeout=TOOL_TIMEOUT)
     response.raise_for_status()
 
     raw_content = response.json()["choices"][0]["message"]["content"]
@@ -68,7 +67,7 @@ def plan(goal: str, engagement_id: str) -> AgentMessage:
         parsed = json.loads(raw_content)
         subtasks = parsed["subtasks"]
         status = TaskStatus.SUCCESS
-    except (json.JSONDecodeError, KeyError) as e:
+    except (json.JSONDecodeError, KeyError):
         subtasks = []
         status = TaskStatus.FAILED
 

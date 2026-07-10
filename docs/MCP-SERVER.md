@@ -1,32 +1,68 @@
-# MCP Server Documentation
+# MCP Server
 
-## Overview
+HALO exposes its 29-tool arsenal as a spec-compliant **Model Context Protocol
+(MCP)** server, so any MCP-capable client — Claude Desktop, IDE agents, the MCP
+Inspector, or a registry — can drive the same tools the autonomous agent uses.
 
-The MCP (Model Context Protocol) server handles tool execution for the autonomous agent.
+## Layout
 
-## Tools Available
+The tool set, argument schemas, and execution logic live in one engine,
+`halo_tools.py`. Two thin transports sit on top of it:
 
-### run_nmap
-Executes network scanning with nmap
+| File | Transport | Used by |
+|------|-----------|---------|
+| `mcp_server.py` | MCP over stdio (JSON-RPC 2.0) | MCP clients / registries |
+| `tool_server.py` | HTTP (Flask, port 8000) | the HALO agent loop |
 
-### run_masscan
-High-speed network scanner
+Because both transports share `halo_tools.py`, the arsenal is defined exactly
+once. Add or change a tool in the `TOOLS` registry (and `ToolExecutor`) in
+`halo_tools.py` and both servers pick it up.
 
-### write_file
-Write or create files on the system
+## Running the MCP server
 
-### read_file
-Read file contents
+```bash
+python3 mcp_server.py
+```
 
-## Configuration
+It speaks MCP on stdio and implements `initialize`, `tools/list`, and
+`tools/call`. Input arguments are validated against each tool's `inputSchema`
+before execution.
 
-The server runs on localhost and communicates with the agent via MCP protocol.
+### Registering with an MCP client
 
-Available tools are registered in the `SUPPORTED_TOOLS` list in `mcp_server.py`;
-add or modify entries there to change the tool arsenal.
+```jsonc
+{
+  "mcpServers": {
+    "halo": { "command": "python3", "args": ["/abs/path/to/mcp_server.py"] }
+  }
+}
+```
 
-## Security Considerations
+A registry-ready manifest is provided at [`server.json`](../server.json).
 
-- MCP server should never be exposed to untrusted networks
-- All tool execution is logged and monitored by Suricata
-- File operations are restricted to intended directories
+### Quick check with the MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector python3 mcp_server.py
+```
+
+## Tool result contract
+
+Every tool returns a JSON object with a stable shape:
+
+```json
+{ "status": "success", "stdout": "...", "stderr": "..." }
+```
+
+On failure, `status` is `"error"` and the object also carries `error_type`,
+`message`, and usually a `recovery_suggestion`. Consumers rely on `status` and
+`stdout`, so that shape is the contract.
+
+## Security considerations
+
+- Every tool executes real offensive tooling on the host. Only register this
+  server with clients you trust, and only run it in an environment you are
+  authorized to operate from.
+- Never expose the HTTP tool server to an untrusted network.
+- All tool execution is logged; pair with host monitoring (e.g. Suricata) as
+  described in [SETUP.md](SETUP.md).

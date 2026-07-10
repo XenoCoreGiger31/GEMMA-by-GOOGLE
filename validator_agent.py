@@ -14,18 +14,7 @@ This is the last stage in the pipeline: Planner -> Orchestrator ->
 Vuln Discovery -> Attacker -> Validator -> report.
 """
 
-import requests
-
 from agent_schema import AgentMessage, AgentName, TaskStatus
-
-MCP_URL = "http://localhost:8000"
-
-
-def call_tool(tool: str, params: dict) -> dict:
-    """Same MCP call pattern used by every other agent."""
-    step = {"tool": tool, **params}
-    response = requests.post(MCP_URL, json=step, timeout=7200)
-    return response.json()
 
 
 def validate_finding(attacker_result: dict, target: str) -> dict:

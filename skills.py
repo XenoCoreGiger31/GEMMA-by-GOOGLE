@@ -1,8 +1,12 @@
+import os
 import re
 from pathlib import Path
 import yaml
 
-SKILLS_DIR = Path.home() / "security-agent" / "skills"
+# Ship-with-the-repo skills live in ./skills next to this file. Override the
+# location with HALO_SKILLS_DIR if you keep playbooks elsewhere.
+DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
+SKILLS_DIR = Path(os.environ.get("HALO_SKILLS_DIR", str(DEFAULT_SKILLS_DIR)))
 
 def _parse_skill_file(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
