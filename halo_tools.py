@@ -567,10 +567,11 @@ class ToolExecutor:
 def _s(desc, required=None, **props):
     """Build a tool inputSchema block from keyword property definitions."""
     return {
-        "type": "object",
-        "properties": props,
-        "required": required or [],
-    }
+    "type": "object",
+    "description": desc,
+    "properties": props,
+    "required": required or [],
+}
 
 
 def _str(desc, default=None):
