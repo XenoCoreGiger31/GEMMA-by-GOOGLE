@@ -16,22 +16,8 @@ stub_vuln_discovery from orchestrator_agent.py by actually calling your
 MCP server instead of pretending.
 """
 
-import requests
-
 from agent_schema import AgentMessage, AgentName, TaskStatus
-
-MCP_URL = "http://localhost:8000"
-
-
-def call_tool(tool: str, params: dict) -> dict:
-    """
-    Sends one tool call to the MCP server, same shape agent_loop.py
-    already uses: a dict with a "tool" key plus whatever params that
-    tool needs. Returns the raw result dict from the server.
-    """
-    step = {"tool": tool, **params}
-    response = requests.post(MCP_URL, json=step, timeout=7200)
-    return response.json()
+from mcp_client import call_tool
 
 
 def run_vuln_discovery(task: dict, engagement_id: str, target: str) -> AgentMessage:

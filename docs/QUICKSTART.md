@@ -21,8 +21,10 @@ cd GEMMA-by-GOOGLE
 ## 2. Install Python dependencies
 
 ```bash
-python3 -m pip install requests flask
+python3 -m pip install -r requirements.txt
 ```
+
+This installs `requests`, `Flask`, and `PyYAML` (used by the skill loader).
 
 ## 3. Point the agent at your LM Studio server
 
@@ -57,6 +59,11 @@ with environment variables — no code edits needed:
 
 | Variable | Overrides | Default |
 |----------|-----------|---------|
+| `HALO_MODEL_URL` | Local LLM chat-completions endpoint | `http://localhost:1234/v1/chat/completions` |
+| `HALO_MODEL_NAME` | Model identifier sent with each request | `local-model` |
+| `HALO_MCP_URL` | MCP tool-server base URL | `http://localhost:8000` |
+| `HALO_TOOL_TIMEOUT` | Per-call timeout, in seconds | `7200` |
+| `HALO_SKILLS_DIR` | Attack-playbook (skills) directory | `./skills` (repo-local) |
 | `HALO_LOG_DIR` | Agent/MCP log directory | `/home/bigkali/security-agent/logs` |
 | `HALO_CACHE_DIR` | Negative-experience cache location | `/home/bigkali/GEMMA-by-GOOGLE` |
 | `HALO_HTTPX_BIN` | Path to the `httpx` binary | `/home/bigkali/go/bin/httpx` |
@@ -65,6 +72,7 @@ with environment variables — no code edits needed:
 For example:
 
 ```bash
+export HALO_MODEL_URL="http://localhost:1234/v1/chat/completions"
 export HALO_LOG_DIR="$HOME/halo/logs"
 export HALO_HTTPX_BIN="$(command -v httpx)"
 export HALO_SHERLOCK_BIN="$(command -v sherlock)"

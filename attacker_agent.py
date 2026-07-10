@@ -12,17 +12,8 @@ found. That division matters: Attacker should never re-scan, it should
 only exploit what's already been reported.
 """
 
-import requests
-
 from agent_schema import AgentMessage, AgentName, TaskStatus
-
-MCP_URL = "http://localhost:8000"
-
-
-def call_tool(tool: str, params: dict) -> dict:
-    step = {"tool": tool, **params}
-    response = requests.post(MCP_URL, json=step, timeout=7200)
-    return response.json()
+from mcp_client import call_tool
 
 
 def run_attacker(task: dict, engagement_id: str, target: str, context: str = "") -> AgentMessage:

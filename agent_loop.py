@@ -1,11 +1,12 @@
 import requests
 import json
 from skills import load_skills, select_relevant_skills
-import logging
 import re
 import os
 from datetime import datetime
 from agent_cache import NegativeCache
+from halo_config import MODEL_URL, MODEL_NAME, MCP_URL, TOOL_TIMEOUT
+from halo_logging import setup_logger
 
 # Default preserves the original author's environment; override via HALO_LOG_DIR.
 LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
@@ -14,60 +15,9 @@ os.makedirs(LOG_DIR, exist_ok=True)
 SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 LOG_FILE = f"{LOG_DIR}/session_{SESSION_ID}.log"
 
-class EmojiFormatter(logging.Formatter):
-    ICONS = {
-        "SCAN":    "🔍",
-        "ATTACK":  "⚔️ ",
-        "SUCCESS": "🎉😄",
-        "FAIL":    "😤💀",
-        "ERROR":   "😭🔥",
-        "TOOL":    "✅👍",
-        "MEMORY":  "🧠",
-        "MODEL":   "🤖",
-        "CHAIN":   "🔗",
-        "REPORT":  "📝",
-        "ENGAGE":  "💣",
-        "GOAL":    "🎯",
-        "START":   "🚀",
-        "FILE":    "📁",
-        "WEB":     "🌐",
-        "CREDS":   "🔑",
-    }
-
-    def format(self, record):
-        time = datetime.now().strftime("%H:%M:%S")
-        msg = record.getMessage()
-        icon = "ℹ️ "
-        for key, emoji in self.ICONS.items():
-            if f"[{key}]" in msg:
-                icon = emoji
-                msg = msg.replace(f"[{key}]", "").strip()
-                break
-        if record.levelno == logging.WARNING:
-            icon = "😤💀"
-        if record.levelno == logging.ERROR:
-            icon = "😭🔥"
-        return f"[{time}] {icon}  {msg}"
-
-def setup_logger():
-    logger = logging.getLogger("agent")
-    logger.setLevel(logging.DEBUG)
-    logger.handlers = []
-    fmt = EmojiFormatter()
-    fh = logging.FileHandler(LOG_FILE)
-    fh.setFormatter(fmt)
-    sh = logging.StreamHandler()
-    sh.setFormatter(fmt)
-    logger.addHandler(fh)
-    logger.addHandler(sh)
-    return logger
-
-log = setup_logger()
+log = setup_logger("agent", LOG_FILE)
 log.info(f"[START] SECURITY AGENT SESSION {SESSION_ID}")
 log.info(f"[FILE] Log file: {LOG_FILE}")
-
-OLLAMA_URL = "http://192.168.0.39:1234/v1/chat/completions"
-MCP_URL = "http://localhost:8000"
 
 SYSTEM_PROMPT = """You are an autonomous penetration testing and offensive cybersecurity agent.
 You perform real penetration tests, vulnerability assessments, and offensive security operations.
@@ -232,7 +182,7 @@ def call_model(goal):
         log.info(f"[SKILLS] Injecting: {relevant_skills}")
     dynamic_prompt = SYSTEM_PROMPT + (f"\n\n# Relevant Skills\n{skill_text}" if skill_text else "")
     payload = {
-        "model": "huihui-gemma-4-12b-it-abliterated-i1",
+        "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": dynamic_prompt},
             {"role": "user", "content": goal}
@@ -241,7 +191,7 @@ def call_model(goal):
         "top_p": 0.9
     }
     try:
-        response = requests.post(OLLAMA_URL, json=payload, timeout=7200)
+        response = requests.post(MODEL_URL, json=payload, timeout=TOOL_TIMEOUT)
         raw = response.json()["choices"][0]["message"]["content"]
         log.info(f"[MODEL] Response received ✅👍")
         return parse_model_response(raw)
@@ -286,7 +236,7 @@ def _run_exploit_gated(step):
     # TEST PHASE — isolated, no network
     test_step = dict(step); test_step["phase"] = "test"; test_step.pop("target", None)
     log.info("[GATE] Running script in isolated test phase (no network)")
-    r = requests.post(MCP_URL, json=test_step, timeout=7200).json()
+    r = requests.post(MCP_URL, json=test_step, timeout=TOOL_TIMEOUT).json()
     test_out = r.get("stdout", "")
     print("\n--- TEST PHASE OUTPUT (isolated, no network) ---")
     print(test_out)
@@ -306,7 +256,7 @@ def _run_exploit_gated(step):
 
     log.info("[GATE] Authorized. Running attack phase against target")
     attack_step = dict(step); attack_step["phase"] = "attack"
-    r = requests.post(MCP_URL, json=attack_step, timeout=7200).json()
+    r = requests.post(MCP_URL, json=attack_step, timeout=TOOL_TIMEOUT).json()
     out = r.get("stdout", "")
     err = r.get("stderr", "")
     ok = r.get("status", "") == "success"
@@ -327,7 +277,7 @@ def execute_step(step):
     start_time = datetime.now()
     log.info(f"[TOOL] Running → {tool} | params: { {k:v for k,v in step.items() if k != 'tool'} }")
     try:
-        result = requests.post(MCP_URL, json=step, timeout=7200)
+        result = requests.post(MCP_URL, json=step, timeout=TOOL_TIMEOUT)
         result_data = result.json()
         output = result_data.get("stdout", "")
         status = result_data.get("status", "")

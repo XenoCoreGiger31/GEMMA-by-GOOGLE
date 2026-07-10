@@ -177,7 +177,7 @@ See **[docs/QUICKSTART.md](docs/QUICKSTART.md)** for full setup. In short:
 ```bash
 git clone https://github.com/XenoCoreGiger31/GEMMA-by-GOOGLE.git
 cd GEMMA-by-GOOGLE
-python3 -m pip install requests flask
+python3 -m pip install -r requirements.txt
 
 python3 mcp_server.py       # terminal 1 — Flask tool server on port 8000
 python3 agent_loop.py       # terminal 2 — the agent
@@ -187,9 +187,12 @@ python3 agent_loop.py       # terminal 2 — the agent
 >>> exit                    # triggers HTML report generation
 ```
 
-> **Note:** some paths in the source are set for the original author's
-> environment. Adjust the constants near the top of `agent_loop.py`,
-> `mcp_server.py`, and `agent_cache.py` to match your machine.
+> **Note:** endpoints and paths default to a standard local setup (LM Studio on
+> `localhost:1234`, MCP server on `localhost:8000`). Override any of them with the
+> `HALO_*` environment variables — see the
+> [environment overrides](docs/QUICKSTART.md#environment-overrides) table. A few
+> author-specific log/cache path defaults remain in `agent_cache.py` and
+> `mcp_server.py`; the env vars cover those too.
 
 ---
 
