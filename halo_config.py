@@ -16,7 +16,8 @@ MODEL_URL = os.environ.get("HALO_MODEL_URL", "http://localhost:1234/v1/chat/comp
 # whatever model is currently loaded, so this works without editing code.
 MODEL_NAME = os.environ.get("HALO_MODEL_NAME", "local-model")
 
-# MCP tool-execution server.
+# HTTP tool-execution server (tool_server.py) that the agent loop drives.
+# Kept as HALO_MCP_URL / MCP_URL for backward compatibility with existing setups.
 MCP_URL = os.environ.get("HALO_MCP_URL", "http://localhost:8000")
 
 # Seconds to wait on a single tool call before giving up.

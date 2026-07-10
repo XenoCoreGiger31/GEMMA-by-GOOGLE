@@ -6,7 +6,7 @@
 
 # 🔐 GEMMA-by-GOOGLE — HALO
 
-**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a Flask MCP tool server through recon, attack, and reporting. No cloud, no API keys.**
+**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a 29-tool arsenal through recon, attack, and reporting, exposed as a standard Model Context Protocol (MCP) server. No cloud, no API keys.**
 
 [What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Contributing](CONTRIBUTING.md)
 
@@ -47,7 +47,8 @@ One word starts an engagement: **`engage`**.
 ## Tool Arsenal
 
 29 tools sit behind the agent's decision loop, all routed through the same
-failure-caching layer. Registered in `SUPPORTED_TOOLS` in `mcp_server.py`.
+failure-caching layer. They are defined once in the `TOOLS` schema registry in
+`halo_tools.py` and served over both transports (MCP and HTTP).
 
 **Recon & OSINT**
 | Tool | Purpose |
@@ -106,13 +107,38 @@ failure-caching layer. Registered in `SUPPORTED_TOOLS` in `mcp_server.py`.
 
 ## Architecture
 
+A single tool engine (`halo_tools.py`) owns the arsenal and its schemas; two
+thin transports sit on top of it, so the tools are defined exactly once:
+
 ```
-agent_loop.py  ──►  mcp_server.py (Flask, port 8000)  ──►  security tools
+   agent_loop.py ──HTTP──►  tool_server.py ─┐
+                                            ├─►  halo_tools.py  ──►  security tools
+   MCP clients  ──stdio─►  mcp_server.py  ──┘   (29-tool engine +
+                                                 schema registry)
      │
      ├──►  agent_cache.py         (persistent negative-experience cache)
      ├──►  skills.py              (adaptive playbook injection)
      └──►  report_generator.py    (auto HTML pentest report on exit)
 ```
+
+- **`mcp_server.py`** — a spec-compliant **Model Context Protocol** server
+  (stdio, JSON-RPC 2.0). Point any MCP client (Claude Desktop, IDE agents,
+  inspectors) or an MCP registry at it to use HALO's arsenal as standard tools.
+- **`tool_server.py`** — the local Flask HTTP tool server (port 8000) the
+  autonomous agent loop drives.
+
+### Use HALO as an MCP server
+
+```jsonc
+// e.g. an MCP client config
+{
+  "mcpServers": {
+    "halo": { "command": "python3", "args": ["/abs/path/to/mcp_server.py"] }
+  }
+}
+```
+
+A ready-to-submit registry manifest lives in [`server.json`](server.json).
 
 ### Multi-agent layer
 
@@ -164,7 +190,8 @@ continues — new capabilities are pushed regularly.
 - **Model**: Gemma 4-12B Instruct Abliterated (GGUF via LM Studio) — works with
   any local model of your choosing
 - **Agent**: Python autonomous loop with MCP tool calls
-- **MCP Server**: Flask on port 8000
+- **Tool transports**: a Model Context Protocol server (stdio) for MCP clients,
+  plus a Flask HTTP tool server on port 8000 for the agent loop
 - **OS**: Kali Linux (tested under UTM on Apple Silicon M1)
 - **Hardware reference**: MacBook Pro M1, 16 GB RAM
 
@@ -179,7 +206,7 @@ git clone https://github.com/XenoCoreGiger31/GEMMA-by-GOOGLE.git
 cd GEMMA-by-GOOGLE
 python3 -m pip install -r requirements.txt
 
-python3 mcp_server.py       # terminal 1 — Flask tool server on port 8000
+python3 tool_server.py      # terminal 1 — HTTP tool server on port 8000
 python3 agent_loop.py       # terminal 2 — the agent
 
 >>> engage 192.168.64.3     # full autonomous recon + attack
@@ -188,11 +215,11 @@ python3 agent_loop.py       # terminal 2 — the agent
 ```
 
 > **Note:** endpoints and paths default to a standard local setup (LM Studio on
-> `localhost:1234`, MCP server on `localhost:8000`). Override any of them with the
-> `HALO_*` environment variables — see the
+> `localhost:1234`, HTTP tool server on `localhost:8000`). Override any of them
+> with the `HALO_*` environment variables — see the
 > [environment overrides](docs/QUICKSTART.md#environment-overrides) table. A few
 > author-specific log/cache path defaults remain in `agent_cache.py` and
-> `mcp_server.py`; the env vars cover those too.
+> `tool_server.py`; the env vars cover those too.
 
 ---
 

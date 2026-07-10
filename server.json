@@ -1,0 +1,55 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.xenocoregiger31/halo",
+  "description": "HALO — a local, autonomous offensive-security agent exposing a 29-tool arsenal (recon, scanning, web fuzzing, exploitation, credential testing, OSINT) as Model Context Protocol tools.",
+  "status": "active",
+  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/XenoCoreGiger31/GEMMA-by-GOOGLE",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "github",
+      "identifier": "XenoCoreGiger31/GEMMA-by-GOOGLE",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "python3",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "mcp_server.py",
+          "description": "HALO's Model Context Protocol server entry point."
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "HALO_LOG_DIR",
+          "description": "Directory for tool-execution logs.",
+          "isRequired": false,
+          "default": "/home/bigkali/security-agent/logs"
+        },
+        {
+          "name": "HALO_TOOL_TIMEOUT",
+          "description": "Per-tool subprocess timeout, in seconds.",
+          "isRequired": false,
+          "default": "7200"
+        },
+        {
+          "name": "HALO_HTTPX_BIN",
+          "description": "Path to the ProjectDiscovery httpx binary.",
+          "isRequired": false,
+          "default": "/home/bigkali/go/bin/httpx"
+        },
+        {
+          "name": "HALO_SHERLOCK_BIN",
+          "description": "Path to the sherlock binary.",
+          "isRequired": false,
+          "default": "/home/bigkali/.local/bin/sherlock"
+        }
+      ]
+    }
+  ]
+}

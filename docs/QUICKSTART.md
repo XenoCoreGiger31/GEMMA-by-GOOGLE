@@ -24,18 +24,24 @@ cd GEMMA-by-GOOGLE
 python3 -m pip install -r requirements.txt
 ```
 
-This installs `requests`, `Flask`, and `PyYAML` (used by the skill loader).
+This installs `requests`, `Flask`, `PyYAML` (used by the skill loader), and
+`mcp` (the Model Context Protocol SDK, used by `mcp_server.py`).
 
 ## 3. Point the agent at your LM Studio server
 
 Confirm the model endpoint in your LM Studio install (default is
 `http://localhost:1234`) and make sure the model is loaded and serving.
 
-## 4. Start the MCP tool server
+## 4. Start the HTTP tool server
 
 ```bash
-python3 mcp_server.py    # Flask server on port 8000
+python3 tool_server.py    # HTTP tool server on port 8000
 ```
+
+> Want to use HALO's arsenal from an MCP client (Claude Desktop, an IDE agent,
+> the MCP Inspector) instead of the agent loop? Run the Model Context Protocol
+> server directly — `python3 mcp_server.py` — or point your client's config at
+> it. See [MCP-SERVER.md](MCP-SERVER.md) and [`server.json`](../server.json).
 
 ## 5. Run the agent
 
@@ -61,10 +67,10 @@ with environment variables — no code edits needed:
 |----------|-----------|---------|
 | `HALO_MODEL_URL` | Local LLM chat-completions endpoint | `http://localhost:1234/v1/chat/completions` |
 | `HALO_MODEL_NAME` | Model identifier sent with each request | `local-model` |
-| `HALO_MCP_URL` | MCP tool-server base URL | `http://localhost:8000` |
+| `HALO_MCP_URL` | HTTP tool-server base URL | `http://localhost:8000` |
 | `HALO_TOOL_TIMEOUT` | Per-call timeout, in seconds | `7200` |
 | `HALO_SKILLS_DIR` | Attack-playbook (skills) directory | `./skills` (repo-local) |
-| `HALO_LOG_DIR` | Agent/MCP log directory | `/home/bigkali/security-agent/logs` |
+| `HALO_LOG_DIR` | Agent / tool-server log directory | `/home/bigkali/security-agent/logs` |
 | `HALO_CACHE_DIR` | Negative-experience cache location | `/home/bigkali/GEMMA-by-GOOGLE` |
 | `HALO_HTTPX_BIN` | Path to the `httpx` binary | `/home/bigkali/go/bin/httpx` |
 | `HALO_SHERLOCK_BIN` | Path to the `sherlock` binary | `/home/bigkali/.local/bin/sherlock` |
