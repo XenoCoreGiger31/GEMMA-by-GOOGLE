@@ -16,6 +16,7 @@
 ![LM Studio](https://img.shields.io/badge/LM_Studio-Compatible-purple)
 ![Platform](https://img.shields.io/badge/Platform-Kali_Linux-blueviolet)
 ![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
+[![GEMMA-by-GOOGLE MCP server](https://glama.ai/mcp/servers/XenoCoreGiger31/GEMMA-by-GOOGLE/badges/score.svg)](https://glama.ai/mcp/servers/XenoCoreGiger31/GEMMA-by-GOOGLE)
 
 </div>
 
