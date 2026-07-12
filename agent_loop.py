@@ -1,3 +1,19 @@
+"""
+Interactive driver for the autonomous HALO security agent.
+
+This is the agent's main loop: it prompts the local LLM for a JSON tool
+"chain", parses and repairs that response, and executes each step through the
+MCP tool server. It runs recon to discover open ports, then an attack loop that
+works each untried port, consulting the persistent NegativeCache so it never
+re-runs a permanently-blocked approach. Custom exploit scripts go through a
+two-gate human-approval flow before touching a target.
+
+Run directly for an interactive prompt:
+    python3 agent_loop.py
+Then `engage <target>` for a full recon+attack engagement, or type any goal for
+a single model-driven tool chain.
+"""
+
 import requests
 import json
 from skills import load_skills, select_relevant_skills
@@ -91,6 +107,8 @@ NO explanations. NO markdown. NO trailing commas. ONLY the single JSON object.""
 
 
 class AgentMemory:
+    """In-engagement state: which ports are open, tried, breached, and found."""
+
     def __init__(self):
         self.open_ports = []
         self.tried_ports = []
@@ -99,22 +117,26 @@ class AgentMemory:
         self.findings = []
 
     def add_ports(self, ports):
+        """Record newly discovered open ports, de-duplicating against known ones."""
         for p in ports:
             if p not in self.open_ports:
                 self.open_ports.append(p)
         log.info(f"[MEMORY] Open ports discovered: {self.open_ports}")
 
     def add_finding(self, port, tool, detail):
+        """Record a successful finding on a port with the tool and detail."""
         self.findings.append({"port": port, "tool": tool, "detail": detail, "time": datetime.now().strftime("%H:%M:%S")})
         log.info(f"[SUCCESS] Port {port} → {tool}: {detail}")
 
     def next_untried_port(self):
+        """Return the first open port not yet attacked, or None if all tried."""
         for p in self.open_ports:
             if p not in self.tried_ports:
                 return p
         return None
 
     def mark_tried(self, port, success=False):
+        """Mark a port as attacked and file it under successes or failures."""
         if port not in self.tried_ports:
             self.tried_ports.append(port)
         if success:
@@ -125,12 +147,20 @@ class AgentMemory:
             log.warning(f"[FAIL] Nothing worked on port {port}")
 
     def has_untried_ports(self):
+        """Return True while any discovered port has not yet been attacked."""
         return any(p not in self.tried_ports for p in self.open_ports)
 
     def summary(self):
+        """Return a dict snapshot of ports, attempts, and findings so far."""
         return {"open_ports": self.open_ports, "tried": self.tried_ports, "successes": self.successful_attacks, "failures": self.failed_attacks, "findings": self.findings}
 
 def parse_model_response(raw):
+    """Extract a ``{"chain": [...]}`` object from a raw model reply.
+
+    Cleans common LLM JSON defects (code fences, smart quotes, trailing commas),
+    then tries a strict decode; on failure it salvages every standalone tool
+    object it can find. Returns ``{"chain": []}`` if nothing usable remains.
+    """
     try:
         cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
         # sanitize sloppy model JSON before decode
@@ -175,6 +205,7 @@ def parse_model_response(raw):
         return {"chain": []}
 
 def call_model(goal):
+    """Query the local LLM for a tool chain, injecting any relevant skills."""
     log.info(f"[MODEL] Thinking about: {goal[:80]}...")
     relevant_skills = select_relevant_skills(goal)
     skill_text = load_skills(relevant_skills) if relevant_skills else ""
@@ -200,6 +231,7 @@ def call_model(goal):
         return {"chain": []}
 
 def extract_ports(output):
+    """Pull unique port numbers out of scanner output via a few open-port patterns."""
     ports = re.findall(r'(\d+)/tcp\s+open|(\d+)/udp\s+open|port\s+(\d+)|open port (\d+)', output, re.IGNORECASE)
     found = []
     for match in ports:
@@ -271,6 +303,10 @@ def _run_exploit_gated(step):
 
 
 def execute_step(step):
+    """Run one tool step via the MCP server; returns (output, success).
+
+    ``run_exploit`` steps are routed through the two-gate human-approval flow.
+    """
     tool = step.get("tool", "unknown")
     if tool == "run_exploit":
         return _run_exploit_gated(step)
@@ -294,6 +330,7 @@ def execute_step(step):
         return "", False
 
 def run_recon(target, memory):
+    """Scan the target for open ports and record what's found into memory."""
     log.info(f"[SCAN] Starting recon on {target}")
     goal = f"Scan {target} with masscan then nmap to find all open ports and services. JSON only."
     data = call_model(goal)
@@ -308,6 +345,11 @@ def run_recon(target, memory):
                 log.warning(f"[SCAN] 😤💀 No ports found in output")
 
 def run_attack_loop(target, memory, cache=None):
+    """Work each untried open port, exploiting via model-chosen tool chains.
+
+    Skips permanently-blocked steps and records successes/failures into the
+    optional NegativeCache so future runs learn from this one.
+    """
     log.info(f"[ATTACK] Starting attack loop on {target}")
     while memory.has_untried_ports():
         port = memory.next_untried_port()
@@ -346,6 +388,7 @@ def run_attack_loop(target, memory, cache=None):
         log.warning(f"[FAIL] 😤💀 No successful breaches this session")
 
 def run_full_engagement(target):
+    """Run recon then, if any ports opened, the attack loop; return the memory."""
     memory = AgentMemory()
     cache = NegativeCache()
     log.info(f"[ENGAGE] 💣 Full engagement started on {target}")
@@ -357,6 +400,7 @@ def run_full_engagement(target):
     return memory
 
 def execute_chain(chain, cache=None):
+    """Run an explicit list of tool steps in order, honoring the cache gate."""
     for i, step in enumerate(chain, 1):
         log.info(f"[CHAIN] 🔗 Step {i} of {len(chain)}: {step.get('tool')}")
         if cache and not cache.should_attempt(step):
@@ -367,6 +411,7 @@ def execute_chain(chain, cache=None):
             cache.record_failure(step, reason=f"manual chain failure, step {i}")
 
 def main():
+    """Run the interactive REPL: engage a target or issue single goals."""
     cache = NegativeCache()
     log.info("[START] 🚀 AUTONOMOUS SECURITY AGENT ONLINE")
     print("=" * 60)

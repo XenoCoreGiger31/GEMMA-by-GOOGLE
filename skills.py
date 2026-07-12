@@ -1,3 +1,12 @@
+"""
+Markdown "skill" loader for the HALO agent.
+
+A skill is a Markdown playbook with a YAML frontmatter header (name +
+description) and a body. This module discovers them under ./skills, loads
+selected ones, and picks the ones most relevant to a goal so the agent loop
+can inject just-in-time guidance into the model prompt.
+"""
+
 import os
 import re
 from pathlib import Path
@@ -9,6 +18,7 @@ DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "skills"
 SKILLS_DIR = Path(os.environ.get("HALO_SKILLS_DIR", str(DEFAULT_SKILLS_DIR)))
 
 def _parse_skill_file(path: Path) -> dict:
+    """Parse one skill file into its name, description, body, and path."""
     text = path.read_text(encoding="utf-8")
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", text, re.DOTALL)
     if not match:
@@ -18,10 +28,12 @@ def _parse_skill_file(path: Path) -> dict:
     return {"name": meta["name"], "description": meta["description"], "body": body.strip(), "path": path}
 
 def list_skills(category: str | None = None) -> list[dict]:
+    """Parse every skill under SKILLS_DIR (optionally one category subdir)."""
     base = SKILLS_DIR / category if category else SKILLS_DIR
     return [_parse_skill_file(p) for p in base.rglob("*.md")]
 
 def load_skills(names: list[str]) -> str:
+    """Return the bodies of the named skills, joined by a Markdown separator."""
     all_skills = list_skills()
     by_name = {s["name"]: s for s in all_skills}
     selected = []
