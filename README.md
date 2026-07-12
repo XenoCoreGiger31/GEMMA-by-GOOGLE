@@ -224,6 +224,16 @@ python3 agent_loop.py       # terminal 2 — the agent
 
 ---
 
+## Running Tests
+
+The unit tests use Python's built-in `unittest` — no extra dependencies:
+
+```bash
+python3 -m unittest
+```
+
+---
+
 ## Contributing
 
 Contributions from the security, AI, and Python communities are welcome — see
