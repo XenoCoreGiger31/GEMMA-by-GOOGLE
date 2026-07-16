@@ -33,7 +33,7 @@ aware of its own attack surface — using current reasoning/model technology.
 | `src/introspection_audit.py` | Internal-state / self-signal audit (J-Space-inspired); black-box + optional white-box J-lens approximation | Code (stdlib) |
 | `src/self_audit.py` | #5 inward — self-audit engine (tool currency, arsenal integrity, framework backlog, anti-obsolescence) | Code (stdlib) |
 | `src/debug_mode.py` | Isolated + bridged + sandboxed debug loop (toggle-gated) | Code (stdlib) |
-| `src/engagement.py` | Safety spine — authorization gate, scope guard, kill switch, chain of custody, engagement prompt | Code (stdlib) |
+| [`../engagement.py`](../engagement.py) | **Graduated — wired into `agent_loop.py`.** Safety spine: authorization gate, scope guard, kill switch, chain of custody, engagement prompt | Code (stdlib) |
 | `src/security_report.py` | Steps 1–4: web-vuln knowledge base (safe examples + patches) + audit-ready report builder | Code (stdlib) |
 
 ### The composed loop (`agent_loop_ng.py`)
@@ -74,6 +74,10 @@ The wiring points into the running harness are:
 2. `continuous_scanner.py` + `asm_inventory.py` → run on a schedule; write findings to `attacksurface.md`.
 3. `ttp_chain.py` → new specialist alongside `validator_agent.py`, gated by the tunable-autonomy policy.
 4. New tools register in `halo_tools.py`'s `TOOLS` registry so both transports expose them.
+5. `engagement.py` (graduated to repo root) — **done.** `agent_loop.py`'s
+   `execute_step()` calls `Engagement.authorize()` before every tool
+   dispatch; `engage <target>` checks scope before recon starts. See
+   `docs/superpowers/specs/2026-07-16-engagement-safety-spine-design.md`.
 
 Each component integrates independently; none require the others.
 

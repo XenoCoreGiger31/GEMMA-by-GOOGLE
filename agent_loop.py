@@ -23,6 +23,8 @@ from datetime import datetime
 from agent_cache import NegativeCache
 from halo_config import MODEL_URL, MODEL_NAME, MCP_URL, TOOL_TIMEOUT
 from halo_logging import setup_logger
+from engagement import (Engagement, AuthorizationError, load_engagement_context,
+                        build_engagement_system_prompt, classify)
 
 # Default preserves the original author's environment; override via HALO_LOG_DIR.
 LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
@@ -35,7 +37,11 @@ log = setup_logger("agent", LOG_FILE)
 log.info(f"[START] SECURITY AGENT SESSION {SESSION_ID}")
 log.info(f"[FILE] Log file: {LOG_FILE}")
 
-SYSTEM_PROMPT = """You are an autonomous penetration testing and offensive cybersecurity agent.
+# Set by main() before the REPL loop starts. execute_step() fails closed
+# (denies every tool call) while this is None.
+ENGAGEMENT = None
+
+TOOL_INSTRUCTIONS = """You are an autonomous penetration testing and offensive cybersecurity agent.
 You perform real penetration tests, vulnerability assessments, and offensive security operations.
 You think like an attacker. You chain tools intelligently. You adapt based on results.
 
@@ -105,6 +111,10 @@ Multiple steps (note the commas BETWEEN objects, all inside ONE array):
 
 NO explanations. NO markdown. NO trailing commas. ONLY the single JSON object."""
 
+# Rebuilt in main() once the engagement context is loaded, so it opens with
+# the authorization/scope preamble ahead of the tool instructions above.
+SYSTEM_PROMPT = TOOL_INSTRUCTIONS
+
 
 class AgentMemory:
     """In-engagement state: which ports are open, tried, breached, and found."""
@@ -164,8 +174,8 @@ def parse_model_response(raw):
     try:
         cleaned = raw.strip().replace("```json", "").replace("```", "").strip()
         # sanitize sloppy model JSON before decode
-        cleaned = cleaned.replace("\u201c", '"').replace("\u201d", '"')  # smart double quotes
-        cleaned = cleaned.replace("\u2018", "'").replace("\u2019", "'")  # smart single quotes
+        cleaned = cleaned.replace("“", '"').replace("”", '"')  # smart double quotes
+        cleaned = cleaned.replace("‘", "'").replace("’", "'")  # smart single quotes
         cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)  # trailing commas before } or ]
         start = cleaned.find("{")
         if start == -1:
@@ -249,6 +259,17 @@ def _flush_stdin():
         pass
 
 
+def _approve(action_class, target):
+    """Engagement approver callback for 'ask'-tier action classes."""
+    print("\n" + "=" * 60)
+    print("1  ACTION AUTHORIZATION REQUEST")
+    print(f"Action class: {action_class}")
+    print(f"Target: {target}")
+    print("=" * 60)
+    _flush_stdin()
+    return input("Authorize? [y/N] ").strip().lower() == "y"
+
+
 def _run_exploit_gated(step):
     """Two-gate human approval for sandboxed exploit scripts."""
     target = step.get("target")
@@ -305,9 +326,18 @@ def _run_exploit_gated(step):
 def execute_step(step):
     """Run one tool step via the MCP server; returns (output, success).
 
-    ``run_exploit`` steps are routed through the two-gate human-approval flow.
+    Every step passes ENGAGEMENT's authorization gate first (fails closed if
+    no engagement is configured). ``run_exploit`` steps that clear the gate
+    are additionally routed through the existing, unmodified two-gate
+    human-approval flow.
     """
     tool = step.get("tool", "unknown")
+    target = step.get("target", "")
+    action_class = classify(tool)
+    if ENGAGEMENT is None or not ENGAGEMENT.authorize("halo", action_class, target):
+        reason = "no engagement configured" if ENGAGEMENT is None else f"denied (class={action_class})"
+        log.warning(f"[GATE] 🚫 {tool} on {target!r} — {reason}")
+        return "", False
     if tool == "run_exploit":
         return _run_exploit_gated(step)
     start_time = datetime.now()
@@ -410,18 +440,40 @@ def execute_chain(chain, cache=None):
         if not ok and cache:
             cache.record_failure(step, reason=f"manual chain failure, step {i}")
 
+def _export_custody_log():
+    if ENGAGEMENT is None:
+        return
+    path = f"{LOG_DIR}/{SESSION_ID}_custody.json"
+    with open(path, "w") as f:
+        json.dump(ENGAGEMENT.custody.export(), f, indent=2)
+    log.info(f"[ENGAGEMENT] Chain of custody exported to {path}")
+
+
 def main():
     """Run the interactive REPL: engage a target or issue single goals."""
+    global ENGAGEMENT, SYSTEM_PROMPT
     cache = NegativeCache()
+    try:
+        ctx = load_engagement_context()
+    except AuthorizationError as e:
+        log.error(f"[ENGAGEMENT] Refusing to start: {e}")
+        print(f"\n[ENGAGEMENT] Refusing to start: {e}")
+        return
+    ENGAGEMENT = Engagement(ctx, approver=_approve)
+    SYSTEM_PROMPT = build_engagement_system_prompt(ctx) + "\n\n" + TOOL_INSTRUCTIONS
+    log.info(f"[ENGAGEMENT] Authorized for scope: {ctx.scope_targets}")
+
     log.info("[START] 🚀 AUTONOMOUS SECURITY AGENT ONLINE")
     print("=" * 60)
     print("⚔️   AUTONOMOUS SECURITY AGENT")
     print("=" * 60)
     print("Commands:")
     print("  engage <target>  - full recon + attack loop")
+    print("  killswitch       - halt all further authorized action")
     print("  <any goal>       - single model query")
     print("  exit             - quit")
     print(f"  📝 Session log: {LOG_FILE}")
+    print(f"  🔒 Authorized scope: {ctx.scope_targets}")
     print("=" * 60)
 
     while True:
@@ -429,12 +481,25 @@ def main():
             goal = input(">>> ").strip()
             if goal.lower() == "exit":
                 log.info("[START] Agent shutdown. Goodbye! 👋")
+                _export_custody_log()
                 break
+            if goal.lower() == "killswitch":
+                ENGAGEMENT.kill.halt("operator")
+                log.warning("[ENGAGEMENT] 🛑 Kill switch engaged — all further action blocked")
+                continue
             if not goal:
                 continue
             log.info(f"[GOAL] 🎯 {goal}")
             if goal.startswith("engage "):
                 target = goal.replace("engage ", "").strip()
+                # Routed through authorize() (not a bare scope.in_scope() check)
+                # so this refusal — like every other gate decision — lands in
+                # the chain-of-custody log.
+                if not ENGAGEMENT.authorize("halo", "recon", target,
+                                            detail="engagement start"):
+                    log.warning(f"[ENGAGEMENT] 🚫 {target} refused at engagement start")
+                    print(f"[ENGAGEMENT] {target} is out of authorized scope {ctx.scope_targets}. Refusing.")
+                    continue
                 memory = run_full_engagement(target)
                 log.info(f"[REPORT] 📝 Engagement complete — run report generator for client memo")
             else:
@@ -446,12 +511,14 @@ def main():
                     log.warning("[FAIL] 😤💀 No tool chain generated")
         except KeyboardInterrupt:
             log.info("[START] Interrupted by user")
+            _export_custody_log()
             import subprocess
             report_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "report_generator.py")
             subprocess.run(["python3", report_script, LOG_FILE])
             break
         except Exception as e:
             log.error(f"[ERROR] 😭🔥 Fatal error: {e}")
+            _export_custody_log()
             break
 
 if __name__ == "__main__":
