@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-introspection_audit.py — internal-state / self-signal audit for HALO. (SHELF / DORMANT)
+introspection_audit.py — internal-state / self-signal audit for HALO.
 
-Not imported by the running harness. Staged per 06_JSPACE_INTROSPECTION.md.
+Implements the introspective divergence check specified in 06_JSPACE_INTROSPECTION.md.
 
 MOTIVATION (and an honest caveat).
 This module is INSPIRED BY an external article describing Anthropic's "J-Space /

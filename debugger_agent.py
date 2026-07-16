@@ -2,15 +2,13 @@
 """
 debugger_agent.py
 
-The Debugger agent - Day 6 of Halo's multi-agent build, the last of the
-five specialists.
+The Debugger agent — failure diagnosis for HALO's multi-agent pipeline;
+the fifth specialist.
 
-Analogy: Debugger is the senior engineer who's seen every failure mode
-before. It never touches a tool itself - it just looks at what broke,
-compares it against known patterns, and hands Orchestrator a ranked
-list of options: "try this first, this second, this as a last resort."
-Orchestrator doesn't need to understand WHY - it just executes
-Debugger's top pick.
+Debugger holds no tools. It inspects a failed step, matches it against
+known failure patterns, and returns Orchestrator a ranked list of
+recovery options. Orchestrator executes the top-ranked suggestion
+without needing the underlying diagnosis.
 """
 
 from agent_schema import AgentMessage, AgentName, TaskStatus, SuggestedFix

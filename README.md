@@ -172,12 +172,12 @@ HALO was built solo, from the ground up, in under six months by a self-taught
 developer and security researcher. The multi-agent core came together one
 specialist at a time, each verified against a real target before moving on:
 
-- **Day 1 — Shared language:** a common message schema (`agent_schema.py`) so the agents can talk to each other
-- **Day 2 — Planner:** turns a goal into an ordered plan, verified against live LM Studio
-- **Day 3 — Orchestrator:** routes each task to the right specialist
-- **Day 4 — Vuln Discovery:** surfaces candidate vulnerabilities, tested against a live Metasploitable target
-- **Day 5 — Attacker:** branches into SQLi / brute-force / IDOR / SSRF / XSS / auth specialists
-- **Day 6 — Debugger:** diagnoses failed tool runs and adjusts
+- **Shared language:** a common message schema (`agent_schema.py`) so the agents can talk to each other
+- **Planner:** turns a goal into an ordered plan, verified against live LM Studio
+- **Orchestrator:** routes each task to the right specialist
+- **Vuln Discovery:** surfaces candidate vulnerabilities, tested against a live Metasploitable target
+- **Attacker:** branches into SQLi / brute-force / IDOR / SSRF / XSS / auth specialists
+- **Debugger:** diagnoses failed tool runs and adjusts
 - **Validator + reporting:** findings are confirmed against real evidence before they count, then compiled into a client-readable report
 
 From there the arsenal grew to 29 tools, and the negative-experience cache turned

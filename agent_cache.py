@@ -1,11 +1,11 @@
 """
 Persistent negative-experience cache for the HALO agent.
 
-Analogy: a veteran soldier's scar tissue. The agent remembers every failed
-approach across ALL sessions — try once, fail, retry once more; fail twice and
-the fingerprint is permanently blacklisted so effort is never wasted on it
-again. Failures are classified (timeout, permission, tool-missing, ...) so the
-retry budget can adapt to the kind of failure rather than a flat count.
+The agent records every failed approach across ALL sessions: an approach is
+retried once, and on a second failure its fingerprint is permanently
+blacklisted so effort is never wasted on it again. Failures are classified
+(timeout, permission, tool-missing, ...) so the retry budget can adapt to the
+kind of failure rather than a flat count.
 
 State persists to failure_cache.json under CACHE_DIR (override via
 HALO_CACHE_DIR) so the memory survives across process restarts.

@@ -1,16 +1,14 @@
 """
 validator_agent.py
 
-The Validator agent - PoC validation + reporting stage for Halo.
+The Validator agent — PoC-validation and reporting stage for HALO.
 
-Analogy: Validator is the quality-control inspector. Attacker hands it
-a claimed finding (e.g. "SQLi on /login worked"), and Validator doesn't
-just take that on faith - it re-checks the evidence (status codes,
-response content, error signatures) to confirm the finding is real,
-not a false positive. Confirmed findings get written into a plain-
-English report entry; unconfirmed ones are flagged and dropped.
+Validator re-checks each finding Attacker claims against the underlying
+evidence (status codes, response content, error signatures) to confirm
+it is real rather than a false positive. Confirmed findings are written
+into a report entry; unconfirmed findings are flagged and dropped.
 
-This is the last stage in the pipeline: Planner -> Orchestrator ->
+Terminal stage of the pipeline: Planner -> Orchestrator ->
 Vuln Discovery -> Attacker -> Validator -> report.
 """
 

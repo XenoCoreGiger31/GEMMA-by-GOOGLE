@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-security_report.py — safe, educational security reporting for HALO. (SHELF / DORMANT)
+security_report.py — safe, educational security reporting for HALO.
 
-Not imported by the running harness. Staged per 09_ENGAGEMENT_SAFETY.md.
+Implements the reporting flow specified in 09_ENGAGEMENT_SAFETY.md.
 
-Implements the operator's requested flow, cleanly:
+The flow, in four steps:
   Step 1 — enumerate common web vulnerabilities (SQLi, XSS, CSRF, +SSRF, IDOR).
   Step 2 — for each, a SAFE, non-functional example (illustration only).
   Step 3 — how to patch / sanitize each.

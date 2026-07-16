@@ -2,14 +2,12 @@
 """
 attacker_agent.py
 
-The Attacker agent - Day 5 of Halo's multi-agent build.
+The Attacker agent — exploitation stage for HALO's multi-agent pipeline.
 
-Analogy: if Vuln Discovery is the scout who reports "there's an old lock
-on the east door, model X, known weak," Attacker is the specialist who
-walks over with the specific tool for THAT lock. It doesn't wander the
-whole building looking for doors - it acts on what the scout already
-found. That division matters: Attacker should never re-scan, it should
-only exploit what's already been reported.
+Attacker acts only on vulnerabilities Vuln Discovery has already
+reported, selecting the specific tool for each reported weakness. It
+never performs its own reconnaissance: the scan/exploit split is
+deliberate, so Attacker exploits reported findings and nothing else.
 """
 
 from agent_schema import AgentMessage, AgentName, TaskStatus

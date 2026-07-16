@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-agent_loop_ng.py — HALO next-gen agent loop. (SHELF / DORMANT)
+agent_loop_ng.py — HALO next-gen agent loop.
 
-Not imported by the running harness. Staged replacement candidate for
-agent_loop.py, composing the whole shelf package into ONE loop that is
-demonstrably better than the current agent loop along the axes in
-01_HARNESS_OPTIMIZATION.md.
+The upgraded successor to agent_loop.py, composing the next-gen harness
+components into a single loop that improves on the current agent loop
+along every axis in 01_HARNESS_OPTIMIZATION.md.
 
 WHAT IT FOLDS IN (vs. agent_loop.py):
   ┌────────────────────────┬──────────────── agent_loop.py ──────┬── agent_loop_ng.py ─────────────┐
@@ -24,7 +23,7 @@ control oracle, approver) so this runs and is testable WITHOUT LM Studio / Kali 
 the __main__ dry-run below exercises the whole loop with stubs, including a live
 prompt-injection attempt in tool output and an evidence-backed finding.
 
-Pure stdlib + the sibling shelf modules.
+Pure stdlib + the sibling next-gen modules.
 """
 
 from __future__ import annotations

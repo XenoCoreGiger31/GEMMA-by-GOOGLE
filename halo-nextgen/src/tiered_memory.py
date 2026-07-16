@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-tiered_memory.py — Phase 2: the read/write memory loop for HALO. (SHELF / DORMANT)
+tiered_memory.py — Phase 2: the read/write memory loop for HALO.
 
-Not imported by the running harness. Staged per 01_HARNESS_OPTIMIZATION.md §C2.
+Implements the read/write memory loop specified in 01_HARNESS_OPTIMIZATION.md §C2.
 
 This is the "better memory" upgrade over agent_cache.NegativeCache. Two objects:
 

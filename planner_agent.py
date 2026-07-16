@@ -1,19 +1,17 @@
 """
 planner_agent.py
 
-The Planner agent - Day 2 of Halo's multi-agent build.
+The Planner agent — goal decomposition for HALO's multi-agent pipeline.
 
-Analogy: Planner is a project manager on their first day at a construction
-site. They don't swing a hammer (no tool calls) and they don't tell
-individual workers what to do minute-to-minute (that's Orchestrator's job).
-Planner's ONLY job is to look at the blueprint (the goal) and write out
-the list of jobs that need doing, in order, with who's best suited for
-each one.
+Planner holds no tools and does not schedule work at runtime (that is
+Orchestrator's role). Its sole responsibility is to read the engagement
+goal and produce an ordered list of subtasks, each annotated with the
+specialist agent best suited to it.
 
-This agent talks to your local LM Studio endpoint (Gemma 4 12B) to do the
-actual "breaking the goal into subtasks" reasoning - it's a thin wrapper
-around a prompt, not custom logic. That's intentional: Planner's
-intelligence comes from the model, not from hardcoded if/else task rules.
+Decomposition reasoning is delegated to the local LM Studio endpoint
+(Gemma 4 12B); this module is a thin prompt wrapper rather than a
+hardcoded rule set, so planning intelligence comes from the model rather
+than from static if/else logic.
 """
 
 import json

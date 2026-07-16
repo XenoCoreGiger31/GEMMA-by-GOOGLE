@@ -4,12 +4,10 @@ agent_schema.py
 The shared "intake form" for Halo's multi-agent system.
 
 Every agent (Planner, Orchestrator, Vuln Discovery, Attacker, Debugger)
-speaks in this format. Think of it like a hospital: every department files
-the same shape of patient chart, even though a surgeon's notes and a
-radiologist's notes contain different specifics. The CHART FORMAT is
-identical - only the CONTENTS differ by specialty.
-
-This is Day 1 architecture only. No tool-calling logic lives here.
+communicates in this format: a single message shape shared across all
+specialties, where the envelope is identical and only the `result`
+contents differ by agent. This module defines that shape only; no
+tool-calling logic lives here.
 """
 
 from dataclasses import dataclass, field
@@ -88,9 +86,9 @@ class AgentMessage:
 
 # ---------------------------------------------------------------------------
 # RESULT SHAPES - what goes inside `result` for each agent.
-# These aren't enforced by the type system yet (that's a Day-2+ refinement
-# if you want it) - for now they're the AGREED CONTRACT. Treat changing
-# these shapes later like changing a database schema: do it deliberately.
+# These aren't enforced by the type system; they are the agreed contract
+# between agents. Treat changing these shapes later like changing a
+# database schema: do it deliberately.
 # ---------------------------------------------------------------------------
 
 # Planner.result should look like:

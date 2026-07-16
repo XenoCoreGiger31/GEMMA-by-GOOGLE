@@ -2,18 +2,17 @@
 """
 vuln_discovery_agent.py
 
-The Vuln Discovery agent - Day 4 of Halo's multi-agent build.
+The Vuln Discovery agent — reconnaissance stage for HALO's multi-agent
+pipeline.
 
-Analogy: Vuln Discovery is a recon scout. Handed a work order (a task
-from Orchestrator), it walks over to the equipment room (your MCP
-server on localhost:8000) and runs exactly one piece of gear at a time
-- nmap, nikto, httpx, whatever the task calls for - then radios back a
-clean report of what it found. It does NOT decide what to do with those
-findings (that's Attacker's job) - it only observes and reports.
+Handed a task from Orchestrator, Vuln Discovery calls the MCP tool
+server (localhost:8000) and runs a single tool per task — nmap, nikto,
+httpx, or whichever the task specifies — then returns a structured
+report of its findings. It observes and reports only; deciding how to
+act on the findings is Attacker's responsibility.
 
-This is the first REAL specialist agent - it replaces
-stub_vuln_discovery from orchestrator_agent.py by actually calling your
-MCP server instead of pretending.
+It is the first full specialist, calling the MCP tool server directly in
+place of the earlier stub_vuln_discovery in orchestrator_agent.py.
 """
 
 from agent_schema import AgentMessage, AgentName, TaskStatus

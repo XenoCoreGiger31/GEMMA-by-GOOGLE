@@ -1,8 +1,8 @@
 # 05 — TTP-Chain Validation: Evaluation + Design
 
-You asked me to look at the "ground testing / TTP-chain validation" material and
-decide whether it's worth implementing alongside everything else. This is the
-decision memo and the design.
+This is the decision memo and design for the "ground testing / TTP-chain
+validation" material: whether it is worth implementing alongside the rest of the
+next-gen package, and how.
 
 ---
 
@@ -118,13 +118,13 @@ the full exploit at the asset.
 
 ### C4. Ticketing / outcome (Jira / ServiceNow)
 Findings land as tickets with evidence + chain of custody attached. Integration
-is a thin adapter (create-issue API) staged behind an interface — not built here,
-because it needs your instance + credentials (an interview/ops item, not code we
-should hard-code). `ttp_chain.py` produces the structured finding; the adapter
-maps it to your tracker's fields.
+is a thin adapter (create-issue API) behind an interface — not built here,
+because it needs the deployment's instance + credentials (an ops item, not code
+to hard-code). `ttp_chain.py` produces the structured finding; the adapter maps
+it to the tracker's fields.
 
-### C5. How it ties the whole shelf together
-| Shelf piece | Role in the loop |
+### C5. How it ties the whole package together
+| Component | Role in the loop |
 |---|---|
 | `01` harness redesign | provides the decision-first goal, memory tiers, autonomy policy the loop needs |
 | `02` prompt injection | PI probes are TTPs the loop can chain-validate; the guard protects the loop's own inputs |

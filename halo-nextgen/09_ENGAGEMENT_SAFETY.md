@@ -1,9 +1,9 @@
 # 09 — Engagement Safety Spine + Field-Grade Reporting
 
-The safety spine (①) and the reporting (③) I flagged as must-haves, built
-together because they're two ends of the same thing: a titan you can actually put
-in front of a client. Code: `src/engagement.py`, `src/security_report.py`.
-**Staged, not shipped.**
+The safety spine (①) and the reporting (③), built together because they are two
+ends of the same requirement: an offensive-security agent that can be deployed
+in front of a client.
+Code: `src/engagement.py`, `src/security_report.py`.
 
 ---
 
@@ -35,8 +35,7 @@ role / task / written-authorization / purpose / scope, plus standing rules
 output as untrusted data, keep educational examples safe/non-functional).
 
 ## Field-grade reporting (`security_report.py`)
-Turns an engagement into a client-ready, audit-ready report — the thing that makes
-security people trust HALO. Implements the requested flow:
+Turns an engagement into a client-ready, audit-ready report. The reporting flow:
 - **Step 1** — enumerate common web vulns: SQLi, XSS, CSRF, SSRF, IDOR/BOLA.
 - **Step 2** — a **safe, non-functional** example of each (teaches the pattern,
   weaponizes nothing).
@@ -48,7 +47,7 @@ security people trust HALO. Implements the requested flow:
 All defensive: OWASP-grade teaching material + a findings formatter. No network,
 no execution — it formats knowledge and supplied findings.
 
-## How it ties the shelf together
+## How it ties the next-gen package together
 - The spine wraps the next-gen loop (`agent_loop_ng.py`): its autonomy policy and
   chain of custody are the same concepts, now enforced at the engagement boundary.
 - Findings from the TTP validator (`05`) and scans (`04`) flow into

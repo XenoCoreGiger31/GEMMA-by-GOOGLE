@@ -2,7 +2,7 @@
 
 The inward half of #5. HALO turns its eyes on ITSELF on a schedule so it never
 goes stale, broken, or behind the frontier. Sibling to the outward/offensive
-attack-surface half (`04`). Code: `src/self_audit.py`. **Staged, not shipped.**
+attack-surface half (`04`). Code: `src/self_audit.py`.
 
 ---
 

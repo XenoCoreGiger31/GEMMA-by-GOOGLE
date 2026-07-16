@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-engagement.py — HALO's safety spine + authorized-engagement scaffold. (SHELF / DORMANT)
+engagement.py — HALO's safety spine + authorized-engagement scaffold.
 
-Not imported by the running harness. Staged per 09_ENGAGEMENT_SAFETY.md.
+Implements the safety spine specified in 09_ENGAGEMENT_SAFETY.md.
 
 This is what lets HALO's full arsenal do real, sensitive offensive work WITHOUT
 being reckless or illegitimate: every engagement is bound by written
 authorization, confined to an explicit target scope, gated by an autonomy
 policy, halted instantly by a kill switch, and logged end-to-end for client
-review. A titan with a leash is still a titan; a titan without one is a lawsuit.
+review.
 
 Four guarantees:
   * AUTHORIZATION — you cannot start an engagement without attesting written

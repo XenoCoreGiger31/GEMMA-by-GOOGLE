@@ -1,11 +1,11 @@
 # 08 — Debug Mode: separate, bridged, sandboxed
 
-The debugging capability you flagged. Built to the design we agreed:
-**separate + bridged + sandboxed.** Code: `src/debug_mode.py`. **Staged, not shipped.**
+The isolated debugging capability, built to the design
+**separate + bridged + sandboxed.** Code: `src/debug_mode.py`.
 
 ---
 
-## Why this shape (the reasoning you asked for)
+## Why this shape
 A debugger's whole job is to **freely write and run code**. The security loop's
 whole job is to **gate everything**. Those two instincts are opposites, so the
 safe design keeps them apart while still letting the security side borrow the

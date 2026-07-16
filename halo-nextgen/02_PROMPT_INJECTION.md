@@ -2,7 +2,7 @@
 
 Answers Screen 2: *model how vulnerable the harness is to prompt injection; map
 every input; describe how each avenue is handled and by which model; decide the
-defense; research the best tools* — **and** the follow-up ask: use prompt
+defense; research the best tools* — **and** the follow-on requirement: use prompt
 injection as a **testing methodology**, not only as a threat to defend against.
 
 ---
@@ -153,14 +153,14 @@ sovereignty) or on the abliterated model refusing (it won't).
 
 ---
 
-## Part E — Prompt injection as a *testing methodology* (the follow-up ask)
+## Part E — Prompt injection as a *testing methodology*
 
-The screens frame PI defensively; you also want to **wield** it. HALO is
+The four prompts frame PI defensively; it can also be **wielded** offensively. HALO is
 perfectly positioned to do offensive PI testing, because it already ingests and
 reasons over target output. This turns PI into a **TTP** in the TTP-chain sense
 (`05`): "does this target's LLM-driven surface accept injected instructions?"
 
-Staged capability (design; a `run_prompt_injection_probe` tool would be added to
+Capability design (a `run_prompt_injection_probe` tool would be added to
 `halo_tools.TOOLS` on deployment):
 - **Corpus of graded payloads** by level: direct override, role confusion,
   indirect (payload planted in a page the target LLM will fetch), tool/exfil,

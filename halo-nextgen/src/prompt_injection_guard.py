@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-prompt_injection_guard.py — trust-tiered input defense for HALO. (SHELF / DORMANT)
+prompt_injection_guard.py — trust-tiered input defense for HALO.
 
-Not imported by the running harness. Staged per halo-nextgen/02_PROMPT_INJECTION.md.
+Implements the input-boundary defense specified in halo-nextgen/02_PROMPT_INJECTION.md.
 
 The design principle (see 02_PROMPT_INJECTION.md): the model emits actions, the
 harness decides whether they run. HALO runs an abliterated model and executes

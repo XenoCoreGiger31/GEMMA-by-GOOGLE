@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-self_audit.py — HALO's inward eye: self-audit & anti-obsolescence. (SHELF / DORMANT)
+self_audit.py — HALO's inward eye: self-audit & anti-obsolescence.
 
-Not imported by the running harness. Staged per 07_SELF_AUDIT.md.
+Implements the self-audit schedule specified in 07_SELF_AUDIT.md.
 
 On a schedule (default ~30 days, once the MCP server is running) HALO turns its
 eyes on ITSELF and answers: am I going stale, broken, or behind the frontier?

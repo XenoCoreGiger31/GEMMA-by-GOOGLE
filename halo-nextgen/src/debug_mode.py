@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-debug_mode.py — HALO's isolated, sandboxed debugger. (SHELF / DORMANT)
+debug_mode.py — HALO's isolated, sandboxed debugger.
 
-Not imported by the running harness. Staged per 08_DEBUG_MODE.md.
+Implements the isolated debugger specified in 08_DEBUG_MODE.md.
 
-Design (operator-approved): SEPARATE, BRIDGED, SANDBOXED.
+Design: SEPARATE, BRIDGED, SANDBOXED.
   * SEPARATE  — a standalone mode behind an explicit toggle (off by default). A
                 debugger must freely write and run code; the security loop must
                 gate everything. Mixing the two plumbings is dangerous, so they

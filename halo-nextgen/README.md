@@ -1,13 +1,13 @@
-# HALO Next-Gen — Shelf Package (DORMANT / NOT DEPLOYED)
+# HALO Next-Gen — Harness Upgrade
 
-> **Status: ON THE SHELF.** Nothing in this directory is wired into the running
-> harness. `mcp_server.py`, `tool_server.py`, `agent_loop.py`, and `halo_tools.py`
-> are untouched. This is a self-contained design + code package staged for a
-> later, deliberate integration into the MCP architecture. Deploy on purpose,
-> not by accident.
+> **What this is.** A self-contained design + code package that upgrades the
+> HALO harness: faster and more goal-directed, with better memory, hardened
+> against prompt injection, and continuously aware of its own attack surface.
+> Each component is defined against a design doc in this directory and composes
+> into the next-gen agent loop (`src/agent_loop_ng.py`).
 
-This package answers the four prompts on the screens ("10 Prompts That Benefit
-from the Smartest Models") plus the follow-up asks, aimed at one goal: make HALO
+This package addresses the four prompts from "10 Prompts That Benefit from the
+Smartest Models" and the follow-on requirements, toward one goal: make HALO
 **faster, stronger, with better memory**, harder to hijack, and continuously
 aware of its own attack surface — using current reasoning/model technology.
 
@@ -26,7 +26,7 @@ aware of its own attack surface — using current reasoning/model technology.
 | [`09_ENGAGEMENT_SAFETY.md`](09_ENGAGEMENT_SAFETY.md) | Safety spine (authorization + scope guard + kill switch + chain of custody) and field-grade reporting | Design |
 | `src/agent_loop_ng.py` | **Next-gen agent loop** — composes everything below into one loop, better than `agent_loop.py` on every axis in `01` | Code (stdlib) |
 | `src/tiered_memory.py` | **Phase 1+2:** persistent `CaseFile` (session log, read/write) + tiered bi-directional memory (negative/positive/environmental) | Code (stdlib) |
-| `src/prompt_injection_guard.py` | Working PI filter (staged, not imported anywhere) | Code (stdlib) |
+| `src/prompt_injection_guard.py` | Trust-tiered prompt-injection filter at the input boundary | Code (stdlib) |
 | `src/continuous_scanner.py` | Continuous vuln/open-port/attack-surface scanner | Code (stdlib) |
 | `src/asm_inventory.py` | Reads/writes `attacksurface.md` as structured data | Code (stdlib) |
 | `src/ttp_chain.py` | TTP-chain decomposition + validate→decide→fix→re-validate loop | Code (stdlib) |
@@ -38,10 +38,10 @@ aware of its own attack surface — using current reasoning/model technology.
 
 ### The composed loop (`agent_loop_ng.py`)
 
-`agent_loop_ng.py` is the staged replacement for the current `agent_loop.py`. It
+`agent_loop_ng.py` is the next-gen successor to the current `agent_loop.py`. It
 folds the whole package into one loop and is better on every axis in `01`:
 
-| | `agent_loop.py` (current) | `agent_loop_ng.py` (shelf) |
+| | `agent_loop.py` (current) | `agent_loop_ng.py` (next-gen) |
 |---|---|---|
 | Goal framing | static tool-manual prompt | goal-first prompt (decide, don't just run) |
 | Success detection | substring grep (`"found"`) | evidence-based validator hook |
@@ -67,16 +67,16 @@ a **tool-runner** ("run nmap, run sqlmap") toward a **decision engine** ("is thi
 exploitable here, with evidence, within the guardrails I was given") — which is
 exactly what the TTP-chain / continuous-validation material formalizes.
 
-## How to deploy later (when you decide to)
+## Integration points
 
-Integration is intentionally deferred. When ready, the wiring points are:
+The wiring points into the running harness are:
 1. `prompt_injection_guard.py` → call at every **input boundary** enumerated in `02`.
 2. `continuous_scanner.py` + `asm_inventory.py` → run on a schedule; write findings to `attacksurface.md`.
 3. `ttp_chain.py` → new specialist alongside `validator_agent.py`, gated by the tunable-autonomy policy.
-4. New tools would be registered in `halo_tools.py`'s `TOOLS` registry so both transports expose them.
+4. New tools register in `halo_tools.py`'s `TOOLS` registry so both transports expose them.
 
-Each is independently deployable. None require the others.
+Each component integrates independently; none require the others.
 
 ---
-*Built as staged work product. Not affiliated with Google LLC. For authorized
-security testing on systems you own or have written permission to test.*
+*Not affiliated with Google LLC. For authorized security testing on systems you
+own or have written permission to test.*

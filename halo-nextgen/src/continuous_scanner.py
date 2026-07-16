@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-continuous_scanner.py — attack-surface monitor for HALO. (SHELF / DORMANT)
+continuous_scanner.py — attack-surface monitor for HALO.
 
-Not imported by the running harness. Staged per halo-nextgen/04_attacksurface.md
+Implements the attack-surface monitoring loop specified in halo-nextgen/04_attacksurface.md
 and 05_TTP_CHAIN_VALIDATION.md (the BAS / re-validate cadence).
 
-What it does when deployed:
+What it does:
   * sweeps the ports of every asset in attacksurface.md,
   * diffs against the last snapshot (a NEW open port / vanished service / cert
     nearing expiry is a change to investigate),
@@ -13,7 +13,7 @@ What it does when deployed:
     (ttp_chain.py) to answer "is this exploitable HERE, given our controls?"
     rather than just "a scanner flagged it."
 
-Design constraints, matching the rest of the shelf:
+Design constraints, consistent across the next-gen components:
   * stdlib-only for the built-in probe (a TCP-connect sweep) so it runs anywhere;
   * a pluggable `PortProbe` interface so the real deployment swaps in HALO's
     masscan/nmap tools (via the tool server) without changing the loop;

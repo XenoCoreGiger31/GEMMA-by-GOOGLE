@@ -1,7 +1,7 @@
 # 06 — Introspective Audit (inspired by the "J-Space" article)
 
 Incorporates the actionable idea from the J-Space / Jacobian-Lens article into
-the build, as a third injection/deception signal. **Staged, not shipped.**
+the build, as a third injection/deception signal.
 
 ---
 

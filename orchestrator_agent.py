@@ -1,15 +1,13 @@
 """
 orchestrator_agent.py
 
-The Orchestrator agent - Day 3 (+Validator hookup) of Halo's multi-agent build.
+The Orchestrator agent — task router for HALO's multi-agent pipeline.
 
-Analogy: Orchestrator is an air traffic controller. It never flies a
-plane itself (no tool calls). It just looks at each plane (task) on its
-list, checks which runway (specialist agent) it's cleared for, and tells
-it to go. Vuln Discovery and Attacker are now real specialists (not
-stubs). After Attacker reports a result, Orchestrator automatically
-routes that result to Validator for PoC confirmation before it's
-counted as a real finding.
+Orchestrator holds no tools of its own. For each task on the queue it
+checks which specialist agent the task is cleared for and dispatches it,
+then routes the returned result onward: an Attacker result is passed to
+Validator for PoC confirmation before it is recorded as a confirmed
+finding. Vuln Discovery and Attacker are dispatched as full specialists.
 """
 
 from agent_schema import AgentMessage, AgentName, TaskStatus

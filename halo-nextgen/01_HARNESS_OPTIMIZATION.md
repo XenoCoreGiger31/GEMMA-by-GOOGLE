@@ -166,7 +166,7 @@ interview question, not a code decision.
 
 ## Part C — The Redesign (faster, stronger, better memory)
 
-Three concrete artifacts. All are drafts staged here; none are wired in.
+Three concrete artifacts, each defined here with its integration point.
 
 ### C1. Goal-first system prompt (replaces the tool-manual prompt)
 
@@ -240,5 +240,4 @@ so new tools inherit a default by class.
 | Autonomy policy (C3) | | | | ✅ |
 | TTP decision layer (`05`) | | ✅ | ✅ | ✅ |
 
-None of this is deployed. It is staged for the deliberate integration described
-in the package README.
+Integration points for these components are described in the package README.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-ttp_chain.py — TTP-chain validation engine for HALO. (SHELF / DORMANT)
+ttp_chain.py — TTP-chain validation engine for HALO.
 
-Not imported by the running harness. Staged per halo-nextgen/05_TTP_CHAIN_VALIDATION.md.
+Implements the TTP-chain validation engine specified in halo-nextgen/05_TTP_CHAIN_VALIDATION.md.
 
 The rocket principle: you can't always fire the live exploit (production /
 air-gapped / one-of-a-kind assets, or brand-new CVEs nobody has weaponized). So
