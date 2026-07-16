@@ -1,18 +1,21 @@
+"""
+Persistent negative-experience cache for the HALO agent.
+
+Analogy: a veteran soldier's scar tissue. The agent remembers every failed
+approach across ALL sessions — try once, fail, retry once more; fail twice and
+the fingerprint is permanently blacklisted so effort is never wasted on it
+again. Failures are classified (timeout, permission, tool-missing, ...) so the
+retry budget can adapt to the kind of failure rather than a flat count.
+
+State persists to failure_cache.json under CACHE_DIR (override via
+HALO_CACHE_DIR) so the memory survives across process restarts.
+"""
+
 import json
 import hashlib
 import os
 import logging
 from datetime import datetime
-
-# ============================================================
-# 🧠 PERSISTENT NEGATIVE EXPERIENCE CACHE
-# GEMMA-by-GOOGLE — Sovereign Agent Layer v1
-#
-# Analogy: a veteran soldier's scar tissue.
-# The agent remembers every failed approach across ALL sessions.
-# Try once → fail → retry once more.
-# Fail twice → permanently blacklisted. Never wasted on again.
-# ============================================================
 
 # Default preserves the original author's environment; override via HALO_CACHE_DIR.
 CACHE_DIR = os.environ.get("HALO_CACHE_DIR", "/home/bigkali/GEMMA-by-GOOGLE")
@@ -50,6 +53,7 @@ class NegativeCache:
     # ----------------------------------------------------------
 
     def _load(self):
+        """Load the cache from disk, starting fresh if it's missing or corrupt."""
         if os.path.exists(CACHE_FILE):
             try:
                 with open(CACHE_FILE, "r") as f:
@@ -60,6 +64,7 @@ class NegativeCache:
         return {}
 
     def _save(self):
+        """Persist the cache to disk, logging (but not raising) on failure."""
         try:
             with open(CACHE_FILE, "w") as f:
                 json.dump(self._cache, f, indent=2)
@@ -79,6 +84,7 @@ class NegativeCache:
         return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
     def _summary(self, step: dict) -> str:
+        """Build a short human-readable one-liner describing a tool call."""
         tool = step.get("tool", "unknown")
         params = " | ".join(f"{k}={v}" for k, v in step.items() if k != "tool")
         return f"{tool} | {params}"
@@ -197,6 +203,7 @@ class NegativeCache:
             self._save()
 
     def stats(self) -> dict:
+        """Return counts of total, permanently-blocked, and pending fingerprints."""
         total = len(self._cache)
         blocked = sum(1 for e in self._cache.values() if e.get("permanently_blocked"))
         pending = total - blocked
