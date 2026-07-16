@@ -112,14 +112,14 @@ A single tool engine (`halo_tools.py`) owns the arsenal and its schemas; two
 thin transports sit on top of it, so the tools are defined exactly once:
 
 ```
-   agent_loop.py ──HTTP──►  tool_server.py ─┐
+   agent_loop.py ──HTTP─►  tool_server.py ─┐
                                             ├─►  halo_tools.py  ──►  security tools
-   MCP clients  ──stdio─►  mcp_server.py  ──┘   (29-tool engine +
+   MCP clients  ──stdio►  mcp_server.py  ──┘   (29-tool engine +
                                                  schema registry)
      │
-     ├──►  agent_cache.py         (persistent negative-experience cache)
-     ├──►  skills.py              (adaptive playbook injection)
-     └──►  report_generator.py    (auto HTML pentest report on exit)
+     ├─►  agent_cache.py         (persistent negative-experience cache)
+     ├─►  skills.py              (adaptive playbook injection)
+     └─►  report_generator.py    (auto HTML pentest report on exit)
 ```
 
 - **`mcp_server.py`** — a spec-compliant **Model Context Protocol** server
@@ -207,6 +207,8 @@ git clone https://github.com/XenoCoreGiger31/GEMMA-by-GOOGLE.git
 cd GEMMA-by-GOOGLE
 python3 -m pip install -r requirements.txt
 
+cp engagement.example.yaml engagement.yaml   # then fill in authorization + scope_targets
+
 python3 tool_server.py      # terminal 1 — HTTP tool server on port 8000
 python3 agent_loop.py       # terminal 2 — the agent
 
@@ -221,6 +223,10 @@ python3 agent_loop.py       # terminal 2 — the agent
 > [environment overrides](docs/QUICKSTART.md#environment-overrides) table. A few
 > author-specific log/cache path defaults remain in `agent_cache.py` and
 > `tool_server.py`; the env vars cover those too.
+>
+> `agent_loop.py` will not start without `engagement.yaml` — it's the
+> authorization + scope gate every tool call passes through, not optional
+> config. See [step 5 of the Quickstart](docs/QUICKSTART.md#5-configure-your-engagement).
 
 ---
 

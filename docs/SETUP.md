@@ -28,6 +28,15 @@ the agent at it with `HALO_MODEL_URL`, e.g.:
 
     export HALO_MODEL_URL="http://192.168.0.39:1234/v1/chat/completions"
 
-## Step 4: Run Agent
+## Step 4: Configure Engagement Authorization
+
+    cp engagement.example.yaml engagement.yaml
+
+Edit `engagement.yaml` — fill in `authorization` and `scope_targets`. The
+agent refuses to start without both (see [`engagement.py`](../engagement.py),
+HALO's safety spine). `engagement.yaml` is gitignored — it names real
+authorized targets and must never be committed.
+
+## Step 5: Run Agent
 
 python agent_loop.py
