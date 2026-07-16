@@ -142,20 +142,21 @@ class LoopConfig:
 class NextGenAgent:
     def __init__(self, model: ModelClient, executor: ToolExecutor,
                  memory: TieredMemory, casefile: CaseFile,
+                 engagement,                       # safety spine — required
                  oracle: ControlOracle | None = None,
-                 approver: Callable[[str], bool] | None = None,
                  validator: Validator = default_validator,
                  config: LoopConfig | None = None,
-                 introspection=None,   # optional IntrospectionAudit (06)
+                 introspection=None,               # optional IntrospectionAudit (deferred)
+                 exploit_handler: Callable[[dict], tuple[str, bool]] | None = None,
                  log: Callable[[str], None] = print):
         self.model = model
         self.executor = executor
         self.memory = memory
         self.case = casefile
+        self.engagement = engagement
         self.introspection = introspection
-        self.config = config or LoopConfig(autonomy=dict(DEFAULT_POLICY))
-        self.policy = self.config.autonomy or dict(DEFAULT_POLICY)
-        self.approver = approver or (lambda cls: False)
+        self.exploit_handler = exploit_handler
+        self.config = config or LoopConfig()
         self.validator = validator
         self.log = log
         self.oracle = oracle
@@ -163,68 +164,56 @@ class NextGenAgent:
             oracle or StaticControlOracle({}),
             autonomy_policy={Autonomy.AUTO: True,
                              Autonomy.ASK: True, Autonomy.NEVER: False},
-            approver=lambda t: self._gate_class(ActionClass.EXPLOITATION),
+            approver=lambda t: self._authorize(ActionClass.EXPLOITATION, t,
+                                                "ttp exploitation step"),
         )
 
-    # ---- autonomy gate ----
-    def _gate(self, step: dict) -> bool:
-        return self._gate_class(classify(step.get("tool", "")))
-
-    def _gate_class(self, cls: ActionClass) -> bool:
-        mode = self.policy.get(cls, "never")
-        if mode == "auto":
-            return True
-        if mode == "never":
-            self.log(f"[POLICY] BLOCKED {cls.value} (never)")
-            return False
-        approved = self.approver(cls.value)
-        self.log(f"[POLICY] {cls.value} requires approval -> "
-                 f"{'granted' if approved else 'denied'}")
-        return approved
+    # ---- single authorization gate (scope + kill switch + custody + autonomy) ----
+    def _authorize(self, cls: ActionClass, target: str, detail: str = "") -> bool:
+        return self.engagement.authorize("halo", cls.value, target, detail)
 
     # ---- one gated, guarded, memory-aware tool step ----
     def _run_step(self, step: dict) -> tuple[str, bool]:
+        tool = step.get("tool", "")
+        target = step.get("target", "")
         # 1) negative-memory gate (skip proven dead ends)
         if not self.memory.should_attempt(step):
-            self.log(f"[MEMORY] skip proven dead end: {step.get('tool')}")
+            self.log(f"[MEMORY] skip proven dead end: {tool}")
             return "", False
-        # 2) autonomy gate
-        if not self._gate(step):
-            return "", False
-        # 3) execute
-        result = self.executor.execute(step)
-        raw = result.get("stdout", "")
-        ok = result.get("status") == "success"
-        # 4) prompt-injection guard on tool output BEFORE it re-enters reasoning
+        # 2) run_exploit two-gate handler, when provided
+        if tool == "run_exploit" and self.exploit_handler is not None:
+            raw, ok = self.exploit_handler(step)
+        else:
+            # 3) authorization gate: scope + kill switch + custody + autonomy
+            if not self._authorize(classify(tool), target, f"tool={tool}"):
+                return "", False
+            result = self.executor.execute(step)
+            raw = result.get("stdout", "")
+            ok = result.get("status") == "success"
+        # 4) prompt-injection guard before output re-enters reasoning
         guarded = pi_inspect(raw, Trust.UNTRUSTED)
         quarantine = guarded.quarantine
-        # 4b) optional introspective audit — the model's OWN read (06 / J-Space
-        #     idea). Runs only when the surface guard already wants a second look,
-        #     so it stays cheap. Catches the "compliant text, privately suspicious"
-        #     divergence the surface heuristics can miss.
         if self.introspection and guarded.needs_judge:
             a = self.introspection.audit(raw)
             if a.divergence or a.manipulation_risk >= 0.5:
                 quarantine = True
                 self.log(f"[INTROSPECT] {a.path}: risk={a.manipulation_risk:.2f} "
                          f"concepts={a.concepts} divergence={a.divergence}")
-                self.case.notes.append(f"introspection flagged {step.get('tool')} "
+                self.case.notes.append(f"introspection flagged {tool} "
                                        f"output: {a.rationale} ({a.concepts})")
         if quarantine:
             self.log(f"[GUARD] quarantined tool output (risk={guarded.risk:.2f}, "
                      f"hits={guarded.hits}) — treating as a finding, not context")
-            self.case.notes.append(f"prompt-injection attempt in {step.get('tool')} "
+            self.case.notes.append(f"prompt-injection attempt in {tool} "
                                    f"output: {guarded.hits}")
         # 5) evidence-based finding (not substring)
         evidence = self.validator(step, raw) if ok else None
         if evidence:
             self.memory.record_success(step, evidence)
-            self.case.add_finding(step.get("target", ""), step.get("tool", ""),
-                                  evidence)
-            self.log(f"[EVIDENCE] {step.get('tool')} -> {evidence}")
+            self.case.add_finding(step.get("target", ""), tool, evidence)
+            self.log(f"[EVIDENCE] {tool} -> {evidence}")
         elif not ok:
-            self.memory.record_failure(step, f"tool={step.get('tool')} failed")
-        # return the GUARDED rendering for any downstream reasoning
+            self.memory.record_failure(step, f"tool={tool} failed")
         return guarded.wrapped, ok
 
     # ---- recon ----
@@ -300,15 +289,20 @@ if __name__ == "__main__":
                     "privately_suspicious": manip, "would_comply_externally": manip,
                     "confidence": 0.9 if manip else 0.1}
 
+    from engagement import Engagement, EngagementContext
+    ctx = EngagementContext(
+        role="Security Researcher", task="Authorized testing",
+        authorization="dry-run", purpose="demo", scope_targets=["10.0.0.0/24"],
+    )
+    eng = Engagement(ctx, approver=lambda cls, tgt: True)
     case = CaseFile(session_id="dryrun", target="10.0.0.5")
     mem = TieredMemory()
     # This host has LSASS protection + EDR active -> a cred-dump chain is broken.
     oracle = StaticControlOracle({"10.0.0.5": {"lsass_protection", "EDR"}})
     agent = NextGenAgent(
-        StubModel(), StubExecutor(), mem, case, oracle=oracle,
-        approver=lambda cls: True,               # dry-run auto-approves ASK
+        StubModel(), StubExecutor(), mem, case, eng, oracle=oracle,
         introspection=IntrospectionAudit(model=StubIntrospector()),
-        config=LoopConfig(autonomy=dict(DEFAULT_POLICY), target_class="windows-host"),
+        config=LoopConfig(target_class="windows-host"),
     )
     agent.run_engagement(exposures={"CVE-2026-DEMO": ["T1190", "T1059", "T1003"]})
     print("\n=== FINAL CASE FILE ===")
