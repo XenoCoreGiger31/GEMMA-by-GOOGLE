@@ -2,7 +2,7 @@
 """
 continuous_scanner.py — attack-surface monitor for HALO. (SHELF / DORMANT)
 
-Not imported by the running harness. Staged per shelf/halo-nextgen/04_attacksurface.md
+Not imported by the running harness. Staged per halo-nextgen/04_attacksurface.md
 and 05_TTP_CHAIN_VALIDATION.md (the BAS / re-validate cadence).
 
 What it does when deployed:
