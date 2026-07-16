@@ -2,7 +2,7 @@
 """
 asm_inventory.py — structured read/write for attacksurface.md. (SHELF / DORMANT)
 
-Not imported by the running harness. Staged per shelf/halo-nextgen/04_attacksurface.md.
+Not imported by the running harness. Staged per halo-nextgen/04_attacksurface.md.
 
 attacksurface.md is the human-readable source of truth for the deployed-infra
 audit (Screen 3). This module lets the continuous scanner treat the inventory
