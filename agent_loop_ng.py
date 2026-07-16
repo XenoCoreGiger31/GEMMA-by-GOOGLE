@@ -83,14 +83,6 @@ _TOOL_CLASS = {
     "write_file": ActionClass.DESTRUCTIVE,
 }
 
-DEFAULT_POLICY = {
-    ActionClass.RECON: "auto",
-    ActionClass.ACTIVE_SCAN: "auto",
-    ActionClass.CREDENTIAL_ATTACK: "ask",
-    ActionClass.EXPLOITATION: "ask",
-    ActionClass.DESTRUCTIVE: "never",
-}
-
 
 def classify(tool: str) -> ActionClass:
     return _TOOL_CLASS.get(tool, ActionClass.EXPLOITATION)  # unknown -> most cautious
@@ -134,7 +126,6 @@ def default_validator(step: dict, output: str) -> str | None:
 
 @dataclass
 class LoopConfig:
-    autonomy: dict = None
     target_class: str = "generic"       # used for environmental memory keying
     max_ports: int = 25
 
