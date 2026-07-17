@@ -51,7 +51,7 @@ separate judge model — a third, independent vote.
 
 ---
 
-## Part C — How it's incorporated (`src/introspection_audit.py`)
+## Part C — How it's incorporated (`introspection_audit.py`)
 
 A capability-tiered `IntrospectionAudit` that **degrades to what HALO can actually
 access** — because a true J-lens needs white-box access to model internals that

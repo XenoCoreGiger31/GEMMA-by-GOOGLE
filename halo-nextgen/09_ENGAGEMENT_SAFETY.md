@@ -3,7 +3,7 @@
 The safety spine (①) and the reporting (③), built together because they are two
 ends of the same requirement: an offensive-security agent that can be deployed
 in front of a client.
-Code: `src/engagement.py`, `src/security_report.py`.
+Code: `engagement.py`, `security_report.py`.
 
 ---
 

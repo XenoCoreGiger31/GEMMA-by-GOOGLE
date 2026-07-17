@@ -1,7 +1,7 @@
 # 08 — Debug Mode: separate, bridged, sandboxed
 
 The isolated debugging capability, built to the design
-**separate + bridged + sandboxed.** Code: `src/debug_mode.py`.
+**separate + bridged + sandboxed.** Code: `debug_mode.py`.
 
 ---
 

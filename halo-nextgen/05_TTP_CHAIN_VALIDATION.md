@@ -53,7 +53,7 @@ Mapped to HALO:
 | Loop component (from the material) | What it means | HALO realization |
 |---|---|---|
 | **Autonomous penetration testing** | AI agents chain real attacks to find what's *genuinely* exploitable, within guardrails | HALO's existing `agent_loop` + multi-agent layer, gated by the autonomy policy (`01` C3) |
-| **Exposure validation (TTP-chaining)** | prove exploitability *without a live exploit*, incl. restricted/air-gapped assets and day-0 CVEs | **new:** `src/ttp_chain.py` — decompose CVE→technique chain, validate each link against controls |
+| **Exposure validation (TTP-chaining)** | prove exploitability *without a live exploit*, incl. restricted/air-gapped assets and day-0 CVEs | **new:** `ttp_chain.py` — decompose CVE→technique chain, validate each link against controls |
 | **Breach & attack simulation (BAS)** | continuously re-test prevention/detection against the newest techniques; catch control drift | **new orchestration:** run the technique library on a cadence via `continuous_scanner.py`; diff results over time |
 
 The unifying cycle is **validate → decide → fix → re-validate**:
@@ -130,8 +130,8 @@ it to the tracker's fields.
 | `02` prompt injection | PI probes are TTPs the loop can chain-validate; the guard protects the loop's own inputs |
 | `03` LLM deep dive | picks the reasoning model for the **decide** step |
 | `04` attacksurface.md | the asset+control inventory the **validate** step tests against; the loop feeds findings back |
-| `src/ttp_chain.py` | the validate→decide→fix→re-validate engine itself |
-| `src/continuous_scanner.py` | the cadence/BAS driver that keeps re-validating |
+| `ttp_chain.py` | the validate→decide→fix→re-validate engine itself |
+| `continuous_scanner.py` | the cadence/BAS driver that keeps re-validating |
 
 ---
 

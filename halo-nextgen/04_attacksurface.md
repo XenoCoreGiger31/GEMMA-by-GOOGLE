@@ -3,13 +3,13 @@
 The outward half of #5: HALO maps the **total attack surface of an authorized
 target** — ports, web, DBs, APIs, cloud, subdomain-takeover, cert drift — and
 feeds it straight into the exploitability decision (`05`). This is the offensive
-capability that makes HALO fearsome. `src/continuous_scanner.py` and
-`src/asm_inventory.py` do the mapping/monitoring; this file is the methodology +
+capability that makes HALO fearsome. `continuous_scanner.py` and
+`asm_inventory.py` do the mapping/monitoring; this file is the methodology +
 the human-readable record.
 
 > **#5 has two halves — this is the OUTWARD one.** The INWARD half — HALO
 > auditing *itself* (tool currency, arsenal integrity, framework currency,
-> anti-obsolescence) — lives in `07_SELF_AUDIT.md` / `src/self_audit.py`. Both are
+> anti-obsolescence) — lives in `07_SELF_AUDIT.md` / `self_audit.py`. Both are
 > built to the same top-tier bar.
 
 > **The table below is a working template.** Point the scanner at an authorized
