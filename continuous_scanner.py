@@ -6,7 +6,8 @@ Implements the attack-surface monitoring loop specified in halo-nextgen/04_attac
 and 05_TTP_CHAIN_VALIDATION.md (the BAS / re-validate cadence).
 
 What it does:
-  * sweeps the ports of every asset in attacksurface.md,
+  * sweeps the ports of every asset it is handed (the inventory from
+    asm_inventory.py is the source of what to scan),
   * diffs against the last snapshot (a NEW open port / vanished service / cert
     nearing expiry is a change to investigate),
   * emits change events, and hands each finding to the TTP-validation loop
@@ -17,9 +18,10 @@ Design constraints, consistent across the next-gen components:
   * stdlib-only for the built-in probe (a TCP-connect sweep) so it runs anywhere;
   * a pluggable `PortProbe` interface so the real deployment swaps in HALO's
     masscan/nmap tools (via the tool server) without changing the loop;
-  * AUTHORIZATION-GATED: it refuses to scan anything not in the inventory, and
-    respects the autonomy policy (recon = auto; anything active is out of scope
-    for this module — that belongs to the agent loop under gating).
+  * AUTHORIZATION-GATED: authorization is single-sourced from the engagement
+    safety spine. `for_engagement()` wires `engagement.ScopeGuard.in_scope`, so a
+    host is scannable only if it is inside the authorized engagement scope
+    (hosts and CIDRs alike). The default predicate denies everything.
 
 It scans; it does not exploit. Exploitation decisions live in ttp_chain.py behind
 the autonomy policy.
@@ -42,6 +44,11 @@ DEFAULT_PORTS = [
 ]
 
 CERT_EXPIRY_WARN_DAYS = 21
+
+
+def _utc_now() -> _dt.datetime:
+    """Naive-UTC now, matching the repo timestamp convention."""
+    return _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
 
 
 class PortProbe(Protocol):
@@ -98,33 +105,38 @@ def _tls_days_to_expiry(host: str, port: int, timeout: float = 3.0) -> int | Non
         if not cert or "notAfter" not in cert:
             return None
         expires = _dt.datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
-        return (expires - _dt.datetime.utcnow()).days
+        return (expires - _utc_now()).days
     except Exception:
         return None
 
 
 class ContinuousScanner:
-    def __init__(self, probe: PortProbe | None = None,
-                 authorized_hosts: set[str] | None = None,
+    def __init__(self, in_scope: Callable[[str], bool] | None = None,
+                 probe: PortProbe | None = None,
                  on_event: Callable[[dict], None] | None = None):
         self.probe = probe or TCPConnectProbe()
-        # AUTHORIZATION GATE: only hosts explicitly in scope are scannable.
-        self.authorized_hosts = authorized_hosts or set()
+        # AUTHORIZATION GATE: single-sourced from the engagement scope. The default
+        # predicate denies everything, so an unconfigured scanner scans nothing.
+        self.in_scope = in_scope or (lambda host: False)
         self.on_event = on_event or (lambda e: print(json.dumps(e)))
 
-    def _authorized(self, host: str) -> bool:
-        return host in self.authorized_hosts
+    @classmethod
+    def for_engagement(cls, engagement, probe: PortProbe | None = None,
+                       on_event: Callable[[dict], None] | None = None) -> "ContinuousScanner":
+        """Wire authorization to the engagement safety spine's ScopeGuard, so a
+        host is scannable only if it is inside the authorized engagement scope."""
+        return cls(in_scope=engagement.scope.in_scope, probe=probe, on_event=on_event)
 
     def scan_host(self, host: str, ports: Iterable[int] | None = None) -> ScanResult:
-        if not self._authorized(host):
+        if not self.in_scope(host):
             raise PermissionError(
-                f"{host} is not in the authorized inventory — refusing to scan. "
-                "Add it to attacksurface.md and the authorized set first."
+                f"{host} is not in the authorized engagement scope — refusing to scan. "
+                "Add it to the engagement scope (and attacksurface.md) first."
             )
         ports = list(ports or DEFAULT_PORTS)
         found = self.probe.open_ports(host, ports)
         res = ScanResult(host=host, open_ports=sorted(found),
-                         scanned_at=_dt.datetime.utcnow().isoformat() + "Z")
+                         scanned_at=_utc_now().isoformat() + "Z")
         for p in (443, 8443, 993, 995):
             if p in found:
                 days = _tls_days_to_expiry(host, p)
@@ -150,11 +162,19 @@ class ContinuousScanner:
             self.on_event(e)
         return events
 
-    def sweep(self, prior: dict[str, ScanResult] | None = None) -> dict[str, ScanResult]:
-        """One cadence tick over all authorized hosts. Returns fresh snapshots."""
+    def sweep(self, hosts: Iterable[str],
+              prior: dict[str, ScanResult] | None = None) -> dict[str, ScanResult]:
+        """One cadence tick over the given hosts (typically the asm_inventory
+        asset list). Each host is authorized through `in_scope`; out-of-scope
+        hosts are skipped with an event rather than aborting the sweep. Returns
+        fresh snapshots for the hosts that were scanned."""
         prior = prior or {}
         fresh: dict[str, ScanResult] = {}
-        for host in sorted(self.authorized_hosts):
+        for host in hosts:
+            if not self.in_scope(host):
+                self.on_event({"type": "out_of_scope", "host": host,
+                               "action": "skipped — not in authorized engagement"})
+                continue
             curr = self.scan_host(host)
             self.diff_snapshot(host, prior.get(host), curr)
             fresh[host] = curr
@@ -162,8 +182,8 @@ class ContinuousScanner:
 
 
 if __name__ == "__main__":
-    # Localhost demo (authorized). Safe: only touches 127.0.0.1.
-    scanner = ContinuousScanner(authorized_hosts={"127.0.0.1"})
-    snap = scanner.sweep()
+    # Localhost demo (explicitly authorized). Safe: only touches 127.0.0.1.
+    scanner = ContinuousScanner(in_scope=lambda h: h == "127.0.0.1")
+    snap = scanner.sweep(["127.0.0.1"])
     for host, res in snap.items():
         print("snapshot:", res.as_dict())
