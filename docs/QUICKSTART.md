@@ -43,7 +43,23 @@ python3 tool_server.py    # HTTP tool server on port 8000
 > server directly — `python3 mcp_server.py` — or point your client's config at
 > it. See [MCP-SERVER.md](MCP-SERVER.md) and [`server.json`](../server.json).
 
-## 5. Run the agent
+## 5. Configure your engagement
+
+`agent_loop.py` refuses to start without a written-authorization reference
+and an explicit target scope — this is HALO's safety spine
+([`engagement.py`](../engagement.py)), not optional config:
+
+```bash
+cp engagement.example.yaml engagement.yaml
+```
+
+Edit `engagement.yaml` and fill in `authorization` (your reference for the
+client's/your own written approval to test), and `scope_targets` (the exact
+hosts/CIDRs you're authorized to touch — anything outside this list is
+refused at the gate, before any tool runs). `engagement.yaml` is gitignored;
+it names real targets and should never be committed.
+
+## 6. Run the agent
 
 In a second terminal:
 

@@ -1,0 +1,15 @@
+# Copy this file to engagement.yaml and fill in real values before running
+# HALO. engagement.yaml itself is gitignored — it names real authorized
+# targets and must never be committed.
+#
+# agent_loop.py refuses to start without a valid engagement.yaml: missing
+# authorization or an empty scope_targets list raises AuthorizationError.
+
+role: "Senior Security Researcher"
+task: "Authorized penetration testing for defensive hardening"
+authorization: "Written CISO approval #2026-07-13"
+purpose: "Identify vulnerabilities so the client can patch them"
+scope_targets:
+  - "10.0.0.0/24"
+  - "app.client.example"
+operator: "chris"

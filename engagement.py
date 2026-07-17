@@ -29,6 +29,7 @@ Pure stdlib. Injectable autonomy + approver so it runs and is testable offline.
 from __future__ import annotations
 
 import ipaddress
+import os
 import datetime as _dt
 from dataclasses import dataclass, field
 from typing import Callable
@@ -182,6 +183,57 @@ STANDING RULES:
 
 Your goal is to identify genuinely exploitable exposures within scope, prove them
 with evidence, and produce a report the client can act on to harden their systems."""
+
+
+_TOOL_CLASS = {
+    "run_httpx": "recon", "run_nmap": "recon", "run_masscan": "recon",
+    "run_subfinder": "recon", "run_wafw00f": "recon", "run_katana": "recon",
+    "run_shodan": "recon", "run_enum4linux": "recon", "read_file": "recon",
+    "run_phoneinfoga": "recon", "run_cloudfox": "recon",
+    "run_nuclei": "active_scan", "run_nikto": "active_scan",
+    "run_gobuster": "active_scan", "run_ffuf": "active_scan",
+    "run_searchsploit": "active_scan",
+    "run_hydra": "credential_attack", "run_medusa": "credential_attack",
+    "run_ncrack": "credential_attack", "run_john": "credential_attack",
+    "run_sqlmap": "exploitation", "run_exploit": "exploitation",
+    "run_command": "destructive", "write_file": "destructive",
+}
+
+
+def classify(tool: str) -> str:
+    """Map a HALO tool name to an engagement action class.
+
+    Unknown tools classify as "exploitation" — the most cautious class that
+    still allows an operator to approve it, rather than a blanket block.
+    """
+    return _TOOL_CLASS.get(tool, "exploitation")
+
+
+def load_engagement_context(path: str = "engagement.yaml") -> EngagementContext:
+    """Load and validate an EngagementContext from a YAML config file.
+
+    Raises AuthorizationError if the file is missing, or if its contents
+    fail EngagementContext's own validation (empty authorization or scope).
+    """
+    import yaml
+
+    if not os.path.exists(path):
+        raise AuthorizationError(
+            f"Refusing to start: no engagement config at {path!r}. "
+            f"Copy engagement.example.yaml to {path!r} and fill in "
+            f"authorization, purpose, and scope_targets before running HALO."
+        )
+    with open(path) as f:
+        raw = yaml.safe_load(f) or {}
+    return EngagementContext(
+        role=raw.get("role", ""),
+        task=raw.get("task", ""),
+        authorization=raw.get("authorization", ""),
+        purpose=raw.get("purpose", ""),
+        scope_targets=raw.get("scope_targets") or [],
+        operator=raw.get("operator", ""),
+        engagement_id=raw.get("engagement_id", ""),
+    )
 
 
 if __name__ == "__main__":
