@@ -139,6 +139,7 @@ class ModuleHealthProbe:
         "engagement", "halo_tools", "ttp_chain", "prompt_injection_guard",
         "continuous_scanner", "asm_inventory", "tiered_memory",
         "introspection_audit", "frontier_feed", "debug_mode", "security_report",
+        "exploit_authoring",
     ]
 
     def __init__(self, modules: list[str] | None = None):
