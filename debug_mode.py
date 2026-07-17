@@ -40,6 +40,45 @@ class FixModel(Protocol):
     def propose_fix(self, code: str, stderr: str) -> str: ...
 
 
+class DockerSandbox:
+    """Real Sandbox: runs `code` isolated in the repo's podman sandbox
+    (sandbox/run_sandbox.py). Uses the `test` phase (--network=none), so debugger
+    executions are network-isolated by design — the debugger fixes and verifies
+    code, it cannot reach a target. Running a repaired script live against a target
+    (the `attack` phase, network on) is a separate, approval-gated capability and
+    deliberately not wired here.
+
+    The runner is injectable, so this adapter tests fully offline without podman.
+    """
+
+    def __init__(self, runner: Callable[..., object] | None = None,
+                 phase: str = "test"):
+        self._runner = runner
+        self.phase = phase
+
+    def _script_runner(self) -> Callable[..., object]:
+        if self._runner is not None:
+            return self._runner
+        from sandbox.run_sandbox import run  # lazy: only the real path needs podman
+        return run
+
+    def run(self, code: str) -> dict:
+        import os
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+            f.write(code)
+            path = f.name
+        try:
+            proc = self._script_runner()(path, self.phase)
+        finally:
+            os.unlink(path)
+        return {
+            "ok": getattr(proc, "returncode", 1) == 0,
+            "stdout": getattr(proc, "stdout", "") or "",
+            "stderr": getattr(proc, "stderr", "") or "",
+        }
+
+
 @dataclass
 class DebugStep:
     attempt: int
@@ -71,6 +110,16 @@ class DebugMode:
         self.approver = approver or (lambda why: True)
         self.log = log
         self.enabled = False          # toggle — OFF by default
+
+    @classmethod
+    def sandboxed(cls, model: FixModel, phase: str = "test",
+                  runner: Callable[..., object] | None = None, max_iters: int = 4,
+                  approver: Callable[[str], bool] | None = None,
+                  log: Callable[[str], None] = print) -> "DebugMode":
+        """Wire the debugger to the repo's real podman sandbox, network-isolated in
+        the `test` phase. The runner is injectable for offline tests."""
+        return cls(DockerSandbox(runner=runner, phase=phase), model,
+                   max_iters=max_iters, approver=approver, log=log)
 
     # ---- the clickable toggle ----
     def enable(self) -> None:

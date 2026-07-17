@@ -138,7 +138,7 @@ class ModuleHealthProbe:
     DEFAULT_MODULES = [
         "engagement", "halo_tools", "ttp_chain", "prompt_injection_guard",
         "continuous_scanner", "asm_inventory", "tiered_memory",
-        "introspection_audit",
+        "introspection_audit", "frontier_feed", "debug_mode",
     ]
 
     def __init__(self, modules: list[str] | None = None):
