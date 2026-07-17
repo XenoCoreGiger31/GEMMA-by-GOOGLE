@@ -31,10 +31,36 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 
+def _utc_now() -> _dt.datetime:
+    """Naive-UTC now, matching the repo timestamp convention."""
+    return _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
+
+
 def _ver_tuple(v: str | None) -> tuple:
     if not v:
         return ()
     return tuple(int(x) for x in re.findall(r"\d+", v)[:4])
+
+
+# HALO exposes 29 wrapper tools (halo_tools.SUPPORTED_TOOLS). The self-audit checks
+# currency (dpkg/apt) and smoke-tests the underlying Kali BINARY, so map each
+# wrapper to its binary. INTERNAL_TOOLS have no external package (shell exec, file
+# I/O, the sandbox exploit runner) and are intentionally excluded. A test asserts
+# HALO_TOOL_BINARIES ∪ INTERNAL_TOOLS == SUPPORTED_TOOLS, so a newly added tool
+# fails the suite until it is classified here.
+HALO_TOOL_BINARIES = {
+    "run_masscan": "masscan", "run_nmap": "nmap", "run_netstat": "netstat",
+    "run_sqlmap": "sqlmap", "run_nikto": "nikto", "run_wafw00f": "wafw00f",
+    "run_shodan": "shodan", "run_phoneinfoga": "phoneinfoga",
+    "run_cloudfox": "cloudfox", "run_hydra": "hydra", "run_john": "john",
+    "run_ncrack": "ncrack", "run_medusa": "medusa",
+    "run_searchsploit": "searchsploit", "run_curl": "curl", "run_wget": "wget",
+    "run_gobuster": "gobuster", "run_ffuf": "ffuf", "run_enum4linux": "enum4linux",
+    "run_setoolkit": "setoolkit", "run_subfinder": "subfinder",
+    "run_nuclei": "nuclei", "run_katana": "katana", "run_httpx": "httpx",
+    "run_sherlock": "sherlock",
+}
+INTERNAL_TOOLS = {"run_command", "run_exploit", "write_file", "read_file"}
 
 
 # --------------------------------------------------------- 1) tool currency ---
@@ -104,10 +130,36 @@ class HealthProbe(Protocol):
     def check(self) -> dict: ...   # {"module": ok_bool, ...}
 
 
+class ModuleHealthProbe:
+    """Real HealthProbe: confirms HALO's own core modules still import. A module
+    that fails to import (a broken graduation, a bad edit) surfaces as unhealthy
+    and drives the verdict to ATTENTION before it bites during an engagement."""
+
+    DEFAULT_MODULES = [
+        "engagement", "halo_tools", "ttp_chain", "prompt_injection_guard",
+        "continuous_scanner", "asm_inventory", "tiered_memory",
+        "introspection_audit",
+    ]
+
+    def __init__(self, modules: list[str] | None = None):
+        self.modules = modules or list(self.DEFAULT_MODULES)
+
+    def check(self) -> dict:
+        import importlib
+        result: dict[str, bool] = {}
+        for name in self.modules:
+            try:
+                importlib.import_module(name)
+                result[name] = True
+            except Exception:
+                result[name] = False
+        return result
+
+
 # --------------------------------------------------------------- the report ---
 @dataclass
 class SelfAuditReport:
-    ran_at: str = field(default_factory=lambda: _dt.datetime.utcnow().isoformat() + "Z")
+    ran_at: str = field(default_factory=lambda: _utc_now().isoformat() + "Z")
     outdated_tools: list[str] = field(default_factory=list)
     missing_tools: list[str] = field(default_factory=list)
     broken_tools: list[str] = field(default_factory=list)
@@ -145,6 +197,25 @@ class SelfAuditor:
         self.approver = approver or (lambda tool: False)
         self.log = log
 
+    @classmethod
+    def for_halo(cls, package_oracle: PackageOracle, prober: Prober,
+                 frontier: FrontierFeed | None = None,
+                 health: "HealthProbe | None" = None,
+                 update_autonomy: str = "ask", approver=None, log=print) -> "SelfAuditor":
+        """Wire the audit to HALO's real arsenal and modules: the tool list comes
+        from the live halo_tools registry (mapped to Kali binaries, internal tools
+        skipped), health defaults to the real ModuleHealthProbe, and frontier
+        defaults to an offline-safe curated feed when none is supplied."""
+        import halo_tools
+        tools = [HALO_TOOL_BINARIES[t] for t in halo_tools.SUPPORTED_TOOLS
+                 if t in HALO_TOOL_BINARIES]
+        if frontier is None:
+            from frontier_feed import PublicFrontierFeed
+            frontier = PublicFrontierFeed.curated_only()
+        return cls(tools, package_oracle, prober, frontier,
+                   health=health or ModuleHealthProbe(),
+                   update_autonomy=update_autonomy, approver=approver, log=log)
+
     @staticmethod
     def due(last_run: str | None, interval_days: int = 30) -> bool:
         if not last_run:
@@ -153,7 +224,7 @@ class SelfAuditor:
             last = _dt.datetime.fromisoformat(last_run.replace("Z", ""))
         except ValueError:
             return True
-        return (_dt.datetime.utcnow() - last).days >= interval_days
+        return (_utc_now() - last).days >= interval_days
 
     def run(self) -> SelfAuditReport:
         rep = SelfAuditReport()
