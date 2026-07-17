@@ -159,6 +159,20 @@ def build_report(engagement_header: dict, findings: list[Finding],
     return "\n".join(out)
 
 
+def build_report_for_engagement(engagement, findings: list[Finding],
+                                include_education: bool = True) -> str:
+    """Single-source the report from a live engagement: the header comes from the
+    engagement context and the chain of custody from its custody log, so the report
+    reflects exactly what the safety spine authorized and recorded. Callers with
+    raw dicts can still use build_report() directly."""
+    ctx = engagement.ctx
+    header = {"role": ctx.role, "task": ctx.task,
+              "authorization": ctx.authorization, "purpose": ctx.purpose,
+              "scope_targets": ctx.scope_targets}
+    return build_report(header, findings, engagement.custody.export(),
+                        include_education=include_education)
+
+
 if __name__ == "__main__":
     print("Step 1 — web vulns:", enumerate_web_vulns())
     print("\nStep 2 — safe SQLi example:\n", safe_example("sqli"))
