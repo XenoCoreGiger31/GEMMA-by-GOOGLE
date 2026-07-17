@@ -34,7 +34,7 @@ from dataclasses import dataclass, field, asdict
 
 
 def _now() -> str:
-    return _dt.datetime.utcnow().isoformat() + "Z"
+    return _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
 
 
 def fingerprint(step: dict) -> str:

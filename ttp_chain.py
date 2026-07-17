@@ -73,7 +73,7 @@ class CustodyEntry:
     actor: str
     action: str
     detail: str
-    ts: str = field(default_factory=lambda: _dt.datetime.utcnow().isoformat() + "Z")
+    ts: str = field(default_factory=lambda: _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z")
 
 
 @dataclass
@@ -84,7 +84,7 @@ class Finding:
     steps: list[ChainStep]
     custody: list[CustodyEntry]
     id: str = field(default_factory=lambda: f"FND-{uuid.uuid4().hex[:8]}")
-    decided_at: str = field(default_factory=lambda: _dt.datetime.utcnow().isoformat() + "Z")
+    decided_at: str = field(default_factory=lambda: _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z")
 
     def blocking_control(self) -> str | None:
         """Which required, blocked link makes this non-exploitable (if any)."""

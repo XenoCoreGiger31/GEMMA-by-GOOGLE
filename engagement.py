@@ -36,7 +36,7 @@ from typing import Callable
 
 
 def _now() -> str:
-    return _dt.datetime.utcnow().isoformat() + "Z"
+    return _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
 
 
 class AuthorizationError(Exception):
