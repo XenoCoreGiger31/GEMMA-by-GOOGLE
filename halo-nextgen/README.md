@@ -4,7 +4,12 @@
 > HALO harness: faster and more goal-directed, with better memory, hardened
 > against prompt injection, and continuously aware of its own attack surface.
 > Each component is defined against a design doc in this directory and composes
-> into the next-gen agent loop (`src/agent_loop_ng.py`).
+> into the next-gen agent loop (`agent_loop_ng.py`, at the repo root).
+
+> **Build status: complete.** Every code module below has **graduated to the
+> repo root** and is wired into the running harness. This directory now holds the
+> design docs (the specification and record); the code lives one level up. Paths
+> in the table point to the graduated locations.
 
 This package addresses the four prompts from "10 Prompts That Benefit from the
 Smartest Models" and the follow-on requirements, toward one goal: make HALO
@@ -24,17 +29,18 @@ aware of its own attack surface — using current reasoning/model technology.
 | [`07_SELF_AUDIT.md`](07_SELF_AUDIT.md) | #5 **inward** — HALO self-audits (tool currency, arsenal integrity, framework currency) so it never goes stale/broken | Design |
 | [`08_DEBUG_MODE.md`](08_DEBUG_MODE.md) | Isolated + bridged + sandboxed debugger (the "clickable debug mode") | Design |
 | [`09_ENGAGEMENT_SAFETY.md`](09_ENGAGEMENT_SAFETY.md) | Safety spine (authorization + scope guard + kill switch + chain of custody) and field-grade reporting | Design |
-| `src/agent_loop_ng.py` | **Next-gen agent loop** — composes everything below into one loop, better than `agent_loop.py` on every axis in `01` | Code (stdlib) |
-| `src/tiered_memory.py` | **Phase 1+2:** persistent `CaseFile` (session log, read/write) + tiered bi-directional memory (negative/positive/environmental) | Code (stdlib) |
-| `src/prompt_injection_guard.py` | Trust-tiered prompt-injection filter at the input boundary | Code (stdlib) |
-| `src/continuous_scanner.py` | Continuous vuln/open-port/attack-surface scanner | Code (stdlib) |
-| `src/asm_inventory.py` | Reads/writes `attacksurface.md` as structured data | Code (stdlib) |
-| `src/ttp_chain.py` | TTP-chain decomposition + validate→decide→fix→re-validate loop | Code (stdlib) |
-| `src/introspection_audit.py` | Internal-state / self-signal audit (J-Space-inspired); black-box + optional white-box J-lens approximation | Code (stdlib) |
-| `src/self_audit.py` | #5 inward — self-audit engine (tool currency, arsenal integrity, framework backlog, anti-obsolescence) | Code (stdlib) |
-| `src/debug_mode.py` | Isolated + bridged + sandboxed debug loop (toggle-gated) | Code (stdlib) |
-| [`../engagement.py`](../engagement.py) | **Graduated — wired into `agent_loop.py`.** Safety spine: authorization gate, scope guard, kill switch, chain of custody, engagement prompt | Code (stdlib) |
-| `src/security_report.py` | Steps 1–4: web-vuln knowledge base (safe examples + patches) + audit-ready report builder | Code (stdlib) |
+| [`../agent_loop_ng.py`](../agent_loop_ng.py) | **Next-gen agent loop** — composes everything below into one loop, better than `agent_loop.py` on every axis in `01` | Code (stdlib) |
+| [`../tiered_memory.py`](../tiered_memory.py) | **Phase 1+2:** persistent `CaseFile` (session log, read/write) + tiered bi-directional memory (negative/positive/environmental) | Code (stdlib) |
+| [`../prompt_injection_guard.py`](../prompt_injection_guard.py) | Trust-tiered prompt-injection filter at the input boundary | Code (stdlib) |
+| [`../continuous_scanner.py`](../continuous_scanner.py) | Continuous vuln/open-port/attack-surface scanner; authorization single-sourced from the engagement scope (`for_engagement`) | Code (stdlib) |
+| [`../asm_inventory.py`](../asm_inventory.py) | Reads/writes `attacksurface.md` as structured data | Code (stdlib) |
+| [`../ttp_chain.py`](../ttp_chain.py) | TTP-chain decomposition + validate→decide→fix→re-validate loop | Code (stdlib) |
+| [`../introspection_audit.py`](../introspection_audit.py) | Internal-state / self-signal audit (J-Space-inspired); black-box + optional white-box J-lens approximation | Code (stdlib) |
+| [`../self_audit.py`](../self_audit.py) | #5 inward — self-audit engine (tool currency, arsenal integrity, framework backlog, anti-obsolescence); wired to the real tool registry + modules (`for_halo`) | Code (stdlib) |
+| [`../frontier_feed.py`](../frontier_feed.py) | #5 inward (outward-looking half) — live frontier-currency feed: GitHub releases + watchlist, MITRE ATT&CK, model endpoints, curated offline fallback | Code (stdlib) |
+| [`../debug_mode.py`](../debug_mode.py) | Isolated + bridged + sandboxed debug loop (toggle-gated); `DockerSandbox` wires the repo's podman sandbox, network-isolated | Code (stdlib) |
+| [`../engagement.py`](../engagement.py) | **Wired into `agent_loop.py`.** Safety spine: authorization gate, scope guard, kill switch, chain of custody, engagement prompt | Code (stdlib) |
+| [`../security_report.py`](../security_report.py) | Steps 1–4: web-vuln knowledge base (safe examples + patches) + audit-ready report builder; `build_report_for_engagement` single-sources header + custody | Code (stdlib) |
 
 ### The composed loop (`agent_loop_ng.py`)
 
@@ -52,8 +58,9 @@ folds the whole package into one loop and is better on every axis in `01`:
 | Exploitability | implicit | TTP-chain validation (decide) |
 
 Every collaborator (model client, tool executor, control oracle, approver) is
-**injected**, so it runs and is testable offline — `python3 src/agent_loop_ng.py`
-exercises the entire loop with stubs, including a live prompt-injection attempt in
+**injected**, so it runs and is testable offline — `python3 agent_loop_ng.py`
+(from the repo root) exercises the entire loop with stubs, including a live
+prompt-injection attempt in
 tool output (caught + quarantined) and an evidence-backed finding.
 
 ## The one goal everything serves
