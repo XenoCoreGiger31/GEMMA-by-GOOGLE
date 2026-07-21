@@ -1,4 +1,24 @@
 #!/usr/bin/env python3
+import shutil
+
+_EXTRA_TOOL_DIRS = [
+    os.path.expanduser("~/go/bin"),
+    os.path.expanduser("~/.local/bin"),
+    "/usr/local/bin",
+    "/usr/bin",
+]
+
+def resolve_tool(name):
+    """Absolute path to a tool binary, or None. PATH first, then known dirs."""
+    hit = shutil.which(name)
+    if hit:
+        return hit
+    for d in _EXTRA_TOOL_DIRS:
+        c = os.path.join(d, name)
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
 """
 halo_tools.py — transport-agnostic tool-execution engine for HALO.
 
@@ -57,6 +77,15 @@ class ToolExecutor:
         """Execute a shell command, escalating to sudo on permission errors."""
         if retry_with_sudo and not command.strip().startswith("sudo"):
             command = f"sudo {command}"
+
+        # Resolve the binary (first token) to an absolute path so the agent
+        # finds tools even when launched from an env that never sourced .zshrc.
+        _parts = command.strip().split()
+        if _parts and _parts[0] != "sudo":
+            _abs = resolve_tool(_parts[0])
+            if _abs:
+                _parts[0] = _abs
+                command = " ".join(_parts)
 
         try:
             result = subprocess.run(
