@@ -18,8 +18,15 @@ import logging
 from datetime import datetime
 
 # Default preserves the original author's environment; override via HALO_CACHE_DIR.
-CACHE_DIR = os.environ.get("HALO_CACHE_DIR", "/home/bigkali/GEMMA-by-GOOGLE")
+CACHE_DIR = os.environ.get("HALO_CACHE_DIR", os.path.dirname(os.path.abspath(__file__)))
 CACHE_FILE = os.path.join(CACHE_DIR, "failure_cache.json")
+
+# Failure memory is PER-ENGAGEMENT by default: within one run it stops the agent
+# from wasting effort re-trying the exact same failing command, but it never
+# carries blocks across sessions — cross-session persistence only made the agent
+# progressively dumber over time. Opt back into disk persistence with
+# HALO_CACHE_PERSIST=1 (rarely wanted).
+PERSIST = os.environ.get("HALO_CACHE_PERSIST", "").lower() in ("1", "true", "yes")
 
 log = logging.getLogger("agent")
 
@@ -32,7 +39,7 @@ class NegativeCache:
     {
       "<fingerprint>": {
         "tool": "run_hydra",
-        "summary": "hydra | target=192.168.64.3 service=ftp",
+        "summary": "hydra | target=203.0.113.3 service=ftp",
         "attempts": 2,
         "permanently_blocked": true,
         "first_seen": "2025-06-08 14:32:01",
@@ -46,14 +53,17 @@ class NegativeCache:
     def __init__(self):
         os.makedirs(CACHE_DIR, exist_ok=True)
         self._cache = self._load()
-        log.info(f"[MEMORY] 🧠 Negative cache loaded — {len(self._cache)} blocked fingerprints")
+        scope = "cross-session" if PERSIST else "per-engagement"
+        log.info(f"[MEMORY] 🧠 Failure cache ready ({scope}) — {len(self._cache)} entries")
 
     # ----------------------------------------------------------
     # Internal helpers
     # ----------------------------------------------------------
 
     def _load(self):
-        """Load the cache from disk, starting fresh if it's missing or corrupt."""
+        """Load the cache from disk when persistence is enabled, else start empty."""
+        if not PERSIST:
+            return {}
         if os.path.exists(CACHE_FILE):
             try:
                 with open(CACHE_FILE, "r") as f:
@@ -64,7 +74,9 @@ class NegativeCache:
         return {}
 
     def _save(self):
-        """Persist the cache to disk, logging (but not raising) on failure."""
+        """Persist the cache to disk when enabled; a no-op in per-engagement mode."""
+        if not PERSIST:
+            return
         try:
             with open(CACHE_FILE, "w") as f:
                 json.dump(self._cache, f, indent=2)

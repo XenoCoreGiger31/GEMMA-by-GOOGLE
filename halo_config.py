@@ -20,5 +20,13 @@ MODEL_NAME = os.environ.get("HALO_MODEL_NAME", "local-model")
 # Kept as HALO_MCP_URL / MCP_URL for backward compatibility with existing setups.
 MCP_URL = os.environ.get("HALO_MCP_URL", "http://localhost:8000")
 
-# Seconds to wait on a single tool call before giving up.
-TOOL_TIMEOUT = int(os.environ.get("HALO_TOOL_TIMEOUT", "7200"))
+# Seconds to wait on a single tool call before giving up. A hung tool (e.g.
+# enum4linux on an SMB null session) must not stall the whole engagement, so
+# this is a tight default; long-running tools pass their own explicit timeout.
+TOOL_TIMEOUT = int(os.environ.get("HALO_TOOL_TIMEOUT", "300"))
+
+# Seconds to wait on a single LLM inference call. Kept well under TOOL_TIMEOUT: the
+# 300s catch-all is for long scans, and letting a model call inherit it means one hung
+# LM Studio request stalls the whole engagement for 5 minutes (observed live). Local
+# chain generations return in seconds, so this bounds the hang without cutting real work.
+MODEL_TIMEOUT = int(os.environ.get("HALO_MODEL_TIMEOUT", "90"))

@@ -26,7 +26,7 @@ Load Gemma 4-12B in LM Studio and start its local server (default:
 `http://localhost:1234`). If the server runs on another host or port, point
 the agent at it with `HALO_MODEL_URL`, e.g.:
 
-    export HALO_MODEL_URL="http://192.168.0.39:1234/v1/chat/completions"
+    export HALO_MODEL_URL="http://198.51.100.10:1234/v1/chat/completions"
 
 ## Step 4: Configure Engagement Authorization
 

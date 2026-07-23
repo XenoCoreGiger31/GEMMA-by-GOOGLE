@@ -102,14 +102,14 @@ class AgentMessage:
 # VulnDiscovery.result should look like:
 # {
 #     "findings": [
-#         {"host": "192.168.64.3", "port": 80, "service": "http", "notes": "outdated nginx"},
+#         {"host": "203.0.113.3", "port": 80, "service": "http", "notes": "outdated nginx"},
 #     ]
 # }
 
 # Attacker.result should look like:
 # {
 #     "attempts": [
-#         {"tool": "run_sqlmap", "target": "192.168.64.3:80", "outcome": "no injection found"},
+#         {"tool": "run_sqlmap", "target": "203.0.113.3:80", "outcome": "no injection found"},
 #     ]
 # }
 

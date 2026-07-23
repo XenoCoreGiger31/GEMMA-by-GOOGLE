@@ -116,6 +116,18 @@ class ScopeGuard:
             ip = ipaddress.ip_address(t)
             return any(ip in net for net in self.nets)
         except ValueError:
+            pass
+        # A network-valued target (e.g. "203.0.113.0/24") is in scope only if it
+        # is itself an authorized net or a SUBNET of one. This is what lets a
+        # target-less local tool (searchsploit) — whose scope check falls back to
+        # the engagement's own CIDR string — pass, and lets a tool legitimately
+        # sweep an authorized subnet. Directional (subnet_of) so a SUPERSET net
+        # can never widen scope past what was authorized.
+        try:
+            net = ipaddress.ip_network(t, strict=False)
+            return any(net.subnet_of(auth) for auth in self.nets
+                       if net.version == auth.version)
+        except ValueError:
             return False
 
 
@@ -196,6 +208,7 @@ _TOOL_CLASS = {
     "run_hydra": "credential_attack", "run_medusa": "credential_attack",
     "run_ncrack": "credential_attack", "run_john": "credential_attack",
     "run_sqlmap": "exploitation", "run_exploit": "exploitation",
+    "run_metasploit": "exploitation",
     "run_command": "destructive", "write_file": "destructive",
 }
 

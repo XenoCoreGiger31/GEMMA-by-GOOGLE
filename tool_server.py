@@ -23,7 +23,7 @@ from halo_logging import setup_logger
 from halo_tools import SUPPORTED_TOOLS, ToolExecutor
 
 # Default preserves the original author's environment; override via HALO_LOG_DIR.
-LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
+LOG_DIR = os.environ.get("HALO_LOG_DIR", os.path.expanduser("~/security-agent/logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 LOG_FILE = f"{LOG_DIR}/tool_server_{SESSION_ID}.log"

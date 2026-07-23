@@ -212,7 +212,7 @@ cp engagement.example.yaml engagement.yaml   # then fill in authorization + scop
 python3 tool_server.py      # terminal 1 — HTTP tool server on port 8000
 python3 agent_loop.py       # terminal 2 — the agent
 
->>> engage 192.168.64.3     # full autonomous recon + attack
+>>> engage 203.0.113.3     # full autonomous recon + attack
 >>> run nmap on 10.0.0.1    # single-goal query
 >>> exit                    # triggers HTML report generation
 ```
