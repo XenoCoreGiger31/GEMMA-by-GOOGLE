@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
+import os  # must precede resolve_tool below, which uses os.path at import time
 import shutil
+import signal
 
 _EXTRA_TOOL_DIRS = [
     os.path.expanduser("~/go/bin"),
@@ -19,6 +20,7 @@ def resolve_tool(name):
             return c
     return None
 
+#!/usr/bin/env python3
 """
 halo_tools.py — transport-agnostic tool-execution engine for HALO.
 
@@ -49,6 +51,49 @@ from halo_config import TOOL_TIMEOUT
 # credential-testing tools so callers can omit it.
 DEFAULT_WORDLIST = "/usr/share/seclists/Passwords/Common-Credentials/darkweb2017_top-1000.txt"
 DEFAULT_WEB_WORDLIST = "/usr/share/seclists/Discovery/Web-Content/common.txt"
+
+# Bundled fallbacks that ship with the repo, so a wrong/absent seclists path can
+# never no-op an attack again. Every hydra call in the last engagement died with
+# "File for passwords not found" because the model invented a seclists path that
+# did not exist — the tool must degrade to a present list instead of failing.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+BUNDLED_WORDLIST = os.path.join(_HERE, "wordlists", "halo-top-passwords.txt")
+BUNDLED_WEB_WORDLIST = os.path.join(_HERE, "wordlists", "halo-web-common.txt")
+
+import re
+# Sanitizers for run_metasploit: strip anything that could break out of the
+# `msfconsole -x "..."` resource string (quotes, semicolons, $(), backticks) while
+# keeping legitimate module paths, hosts/CIDRs, and option values. Untrusted service
+# banners feed these values, so this is a security boundary, not cosmetics.
+_MSF_MODULE_RE = re.compile(r"[^\w/._-]")   # exploit/unix/ftp/vsftpd_234_backdoor
+_MSF_HOST_RE = re.compile(r"[^\w.:/-]")     # 203.0.113.3 / host / CIDR / option value
+_MSF_NUM_RE = re.compile(r"[^\w]")          # ports / numeric option keys
+
+
+def resolve_wordlist(requested, default, bundled):
+    """Return the first wordlist path that actually exists on disk.
+
+    Order: caller's requested path → the configured default → the repo-bundled
+    list (guaranteed present). Returns (path, note) where note is non-empty when
+    a fallback was substituted, so the caller can surface why."""
+    for candidate in (requested, default, bundled):
+        if candidate and os.path.isfile(candidate):
+            note = ""
+            if candidate != requested and requested:
+                note = f"requested wordlist {requested!r} missing; used {candidate!r}"
+            return candidate, note
+    # Nothing on disk — hand back the bundled path anyway; the tool will report
+    # the real error rather than silently claiming a clean miss.
+    return bundled, f"no wordlist found (tried {requested!r}, {default!r}, {bundled!r})"
+
+
+def _clamp_int(value, lo, hi, default):
+    """Coerce value to an int in [lo, hi], falling back to default on garbage."""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, n))
 
 
 class ToolExecutor:
@@ -88,9 +133,30 @@ class ToolExecutor:
                 command = " ".join(_parts)
 
         try:
-            result = subprocess.run(
-                command, shell=True, capture_output=True, text=True, timeout=timeout
+            # Run in its own process group (start_new_session) so a timeout can
+            # kill the WHOLE tree. Tools like enum4linux spawn children
+            # (rpcclient/smbclient) that inherit the stdout pipe; subprocess.run
+            # only kills the immediate shell, so the reap blocks forever and the
+            # timeout never really fires. Popen + killpg fixes the hang.
+            proc = subprocess.Popen(
+                command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, start_new_session=True,
             )
+            try:
+                stdout, stderr_out = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+                return {
+                    "status": "error",
+                    "error_type": "timeout",
+                    "message": f"Command execution timed out ({timeout}s)",
+                    "recovery_suggestion": "Reduce scan scope or increase timeout",
+                }
+            result = subprocess.CompletedProcess(command, proc.returncode, stdout, stderr_out)
 
             if result.returncode == 0:
                 return {
@@ -195,8 +261,11 @@ class ToolExecutor:
             return self._missing("No target URL specified for sqlmap")
         technique = p.get("technique", "B")
         dbms = p.get("dbms", "")
-        level = p.get("level", "1")
-        risk = p.get("risk", "1")
+        # sqlmap requires integers: level 1-5, risk 1-3. The model has passed
+        # letters ("--level A") which aborted the whole run — coerce and clamp
+        # so a bad value degrades to the default instead of crashing.
+        level = _clamp_int(p.get("level", "1"), lo=1, hi=5, default=1)
+        risk = _clamp_int(p.get("risk", "1"), lo=1, hi=3, default=1)
         command = f"sqlmap -u {target} --technique={technique} --level={level} --risk={risk}"
         if dbms:
             command += f" --dbms={dbms}"
@@ -240,15 +309,25 @@ class ToolExecutor:
         target = p.get("target", "")
         service = p.get("service", "ssh")
         username = p.get("username", "")
-        wordlist = p.get("wordlist", DEFAULT_WORDLIST)
         threads = p.get("threads", "16")
-        if not target or not service or not username or not wordlist:
+        if not target or not service or not username:
             return self._missing(
-                "Missing parameters: target, service, username, and wordlist are required"
+                "Missing parameters: target, service, and username are required"
             )
-        return self._execute_command(
-            f"hydra -l {username} -P {wordlist} -t {threads} -I {service}://{target}"
+        wordlist, note = resolve_wordlist(
+            p.get("wordlist"), DEFAULT_WORDLIST, BUNDLED_WORDLIST
         )
+        # Bound the run: with the small bundled lists a real crack finishes in
+        # seconds, but a hung login negotiation (telnet on Metasploitable stalled
+        # the full 300s catch-all last engagement) must not eat the whole wall.
+        hydra_timeout = int(os.environ.get("HALO_HYDRA_TIMEOUT", "120"))
+        result = self._execute_command(
+            f"hydra -l {username} -P {wordlist} -t {threads} -I {service}://{target}",
+            timeout=hydra_timeout,
+        )
+        if note and isinstance(result, dict):
+            result["note"] = note
+        return result
 
     def _run_john(self, p):
         hash_file = p.get("hash_file", "")
@@ -297,7 +376,9 @@ class ToolExecutor:
 
     # ── exploit search / execution ──────────────────────────────────────────
     def _run_searchsploit(self, p):
-        keyword = p.get("keyword", "")
+        # The model reliably sends `query` (sometimes `search`) instead of `keyword`.
+        # Accept all three so the call reaches Exploit-DB instead of being rejected.
+        keyword = (p.get("keyword") or p.get("query") or p.get("search") or "").strip()
         if not keyword:
             return self._missing("No keyword specified for searchsploit")
         command = f"searchsploit {keyword}"
@@ -365,6 +446,45 @@ class ToolExecutor:
             else:
                 result["status"] = "success"
         return result
+
+    def _run_metasploit(self, p):
+        """Fire a chosen Metasploit exploit module at a target. Human-approved
+        upstream (exploitation/ask-tier gate in the loop).
+
+        PRIVATE by construction, per the deddy isolation constraint: `msfconsole
+        -q -n` (quiet, DB-less, NO msfrpcd daemon, no listening port), a transient
+        subprocess via the hardened runner. Every model/banner-derived value is
+        sanitized before it enters the resource string, so an untrusted service
+        banner cannot inject shell/msf commands. Bounded by HALO_MSF_TIMEOUT."""
+        module = _MSF_MODULE_RE.sub("", str(p.get("module", "")).strip())
+        target = _MSF_HOST_RE.sub("", str(p.get("target", "") or p.get("rhosts", "")).strip())
+        if not module or not target:
+            return self._missing("run_metasploit requires 'module' and 'target'")
+        cmds = [f"use {module}", f"set RHOSTS {target}"]
+        rport = _MSF_NUM_RE.sub("", str(p.get("rport", "")).strip())
+        if rport:
+            cmds.append(f"set RPORT {rport}")
+        payload = _MSF_MODULE_RE.sub("", str(p.get("payload", "")).strip())
+        if payload:
+            cmds.append(f"set PAYLOAD {payload}")
+        lhost = _MSF_HOST_RE.sub("", str(p.get("lhost", "")).strip())
+        if lhost:
+            cmds.append(f"set LHOST {lhost}")
+        lport = _MSF_NUM_RE.sub("", str(p.get("lport", "")).strip())
+        if lport:
+            cmds.append(f"set LPORT {lport}")
+        for kv in (p.get("options", "") or "").split():
+            if "=" not in kv:
+                continue
+            k, v = kv.split("=", 1)
+            k = _MSF_NUM_RE.sub("", k.strip())
+            v = _MSF_HOST_RE.sub("", v.strip())
+            if k and v:
+                cmds.append(f"set {k} {v}")
+        cmds += ["run", "exit"]
+        resource = "; ".join(cmds)
+        msf_timeout = int(os.environ.get("HALO_MSF_TIMEOUT", "180"))
+        return self._execute_command(f'msfconsole -q -n -x "{resource}"', timeout=msf_timeout)
 
     # ── web interaction / transfer ──────────────────────────────────────────
     def _run_curl(self, p):
@@ -476,9 +596,18 @@ class ToolExecutor:
         target = p.get("target", "")
         if not target:
             return self._missing("No target specified")
-        wordlist = p.get("wordlist", "") or DEFAULT_WEB_WORDLIST
+        wordlist, note = resolve_wordlist(
+            p.get("wordlist"), DEFAULT_WEB_WORDLIST, BUNDLED_WEB_WORDLIST
+        )
         mode = p.get("mode", "dir")
-        return self._execute_command(f"gobuster {mode} -u {target} -w {wordlist} -t 20")
+        # gobuster dir demands a scheme; the model kept passing a bare
+        # "host:port" and every call died with "url scheme not specified".
+        if mode == "dir" and not target.startswith(("http://", "https://")):
+            target = "http://" + target
+        result = self._execute_command(f"gobuster {mode} -u {target} -w {wordlist} -t 20")
+        if note and isinstance(result, dict):
+            result["note"] = note
+        return result
 
     def _run_ffuf(self, p):
         url = p.get("url", "")
@@ -496,7 +625,12 @@ class ToolExecutor:
         target = p.get("target", "")
         if not target:
             return self._missing("No target specified")
-        return self._execute_command(f"enum4linux -a {target}")
+        # Was `-a`, which includes RID cycling (-r) — slow and prone to hanging
+        # on large ranges. Enumerate users, shares, groups, password policy and
+        # OS info instead: the useful, bounded recon, fully non-interactive.
+        return self._execute_command(
+            f"enum4linux -U -S -G -P -o {target}", timeout=60
+        )
 
     # ── social engineering ──────────────────────────────────────────────────
     def _run_setoolkit(self, p):
@@ -525,8 +659,13 @@ class ToolExecutor:
             command += f" -t {p['templates']}"
         if p.get("severity", ""):
             command += f" -severity {p['severity']}"
-        command += " -silent"
-        return self._execute_command(command)
+        # Bound per-request time so a single slow endpoint can't stall a probe.
+        command += " -timeout 5 -retries 1 -silent"
+        # The per-request flag was NOT enough last engagement: nuclei still rode
+        # the full 300s catch-all twice (template load + thousands of checks on one
+        # host) with zero output. Cap the whole run so it can never do that again.
+        nuclei_timeout = int(os.environ.get("HALO_NUCLEI_TIMEOUT", "90"))
+        return self._execute_command(command, timeout=nuclei_timeout)
 
     def _run_katana(self, p):
         target = p.get("target", "")
@@ -539,17 +678,21 @@ class ToolExecutor:
         target = p.get("target", "")
         if not target:
             return self._missing("No target specified")
-        httpx_bin = os.environ.get("HALO_HTTPX_BIN", "/home/bigkali/go/bin/httpx")
+        httpx_bin = os.environ.get("HALO_HTTPX_BIN", os.path.expanduser("~/go/bin/httpx"))
         command = f"{httpx_bin} -u {target}"
         flags = p.get("flags", "")
         command += f" {flags}" if flags else " -status-code -title -tech-detect -silent"
+        # Per-probe timeout so a hanging port can't ride the full 60s subprocess
+        # kill; last run every httpx call timed out with zero output.
+        if "-timeout" not in command:
+            command += " -timeout 10"
         return self._execute_command(command, timeout=60)
 
     def _run_sherlock(self, p):
         username = p.get("username", "")
         if not username:
             return self._missing("No username specified")
-        sherlock_bin = os.environ.get("HALO_SHERLOCK_BIN", "/home/bigkali/.local/bin/sherlock")
+        sherlock_bin = os.environ.get("HALO_SHERLOCK_BIN", os.path.expanduser("~/.local/bin/sherlock"))
         return self._execute_command(
             f"{sherlock_bin} {username} --print-found --timeout 10", timeout=120
         )
@@ -572,6 +715,7 @@ class ToolExecutor:
         "run_medusa": _run_medusa,
         "run_searchsploit": _run_searchsploit,
         "run_exploit": _run_exploit,
+        "run_metasploit": _run_metasploit,
         "run_curl": _run_curl,
         "run_wget": _run_wget,
         "write_file": _write_file,
@@ -665,11 +809,17 @@ TOOLS = [
      "inputSchema": _s("", ["target", "username"], target=_str("Target host."), service=_str("Protocol module.", "ssh"),
                        username=_str("Username to test."), wordlist=_str("Password wordlist path.", DEFAULT_WORDLIST))},
     {"name": "run_searchsploit", "description": "Search the Exploit-DB archive for known exploits by keyword.",
-     "inputSchema": _s("", ["keyword"], keyword=_str("Service and version, e.g. 'vsftpd 2.3.4'."),
+     "inputSchema": _s("", [], keyword=_str("Service and version, e.g. 'vsftpd 2.3.4'."),
+                       query=_str("Alias for keyword."), search=_str("Alias for keyword."),
                        type=_str("Optional exploit type filter."))},
     {"name": "run_exploit", "description": "LAST RESORT: run a custom Python PoC in the isolated sandbox runner. Requires operator approval upstream.",
      "inputSchema": _s("", ["code"], code=_str("Full Python script source."), target=_str("Target ip or ip:port."),
                        phase=_str("'test' (no network) or 'attack'.", "test"), timeout=_int("Seconds before kill.", 30))},
+    {"name": "run_metasploit", "description": "Fire a chosen Metasploit exploit module at a target (RHOSTS). Human-approved before it runs. PREFER this over run_exploit for known-vuln exploitation of a fingerprinted service.",
+     "inputSchema": _s("", ["module", "target"], module=_str("Full msf module path, e.g. exploit/unix/ftp/vsftpd_234_backdoor."),
+                       target=_str("RHOSTS: target ip/host."), rport=_str("Remote port (RPORT)."),
+                       payload=_str("Payload, e.g. cmd/unix/reverse."), lhost=_str("Local host for reverse payloads (LHOST)."),
+                       lport=_str("Local port (LPORT)."), options=_str("Extra 'KEY=VALUE KEY=VALUE' module options."))},
     {"name": "run_curl", "description": "Issue an HTTP request and return the verbose response.",
      "inputSchema": _s("", ["url"], url=_str("Request URL."), method=_str("HTTP method.", "GET"),
                        headers=_str("Single header string."), data=_str("Request body for POST/PUT/PATCH."))},

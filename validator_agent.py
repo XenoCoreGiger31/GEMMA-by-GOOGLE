@@ -13,64 +13,35 @@ Vuln Discovery -> Attacker -> Validator -> report.
 """
 
 from agent_schema import AgentMessage, AgentName, TaskStatus
+from exploitation_core import breach_confirmed
 
 
 def validate_finding(attacker_result: dict, target: str) -> dict:
+    """Confirm an Attacker finding using the honest, evidence-based breach check.
+
+    Delegates to exploitation_core.breach_confirmed rather than per-tool substring
+    heuristics (the old approach confirmed non-breaches — hydra's "0 valid password
+    found", searchsploit's "Shellcodes:" footer — the same false-positive class that
+    produced HALO's fake 23/23). Reads the Attacker's real output field ("attempts"),
+    with forward-compatible fallbacks for the Phase-3 attacker rebuild.
     """
-    Takes the raw findings from Attacker and checks for confirmation
-    signals before accepting the finding as real. This is intentionally
-    conservative - simple heuristics now, can get smarter later.
-    """
-    tool_used = attacker_result.get("tool_used", "")
-    findings = attacker_result.get("findings", "") or ""
-    findings_lower = findings.lower()
+    tool = attacker_result.get("tool_used", "")
+    output = (attacker_result.get("attempts")
+              or attacker_result.get("output")
+              or attacker_result.get("findings")
+              or "")
+    ok = attacker_result.get("ok", True)
 
-    confirmed = False
-    confidence = "low"
-    evidence = ""
-
-    if tool_used == "run_sqlmap":
-        if "parameter" in findings_lower and "vulnerable" in findings_lower:
-            confirmed = True
-            confidence = "high"
-            evidence = "sqlmap confirmed injectable parameter"
-
-    elif tool_used == "run_hydra":
-        if "login:" in findings_lower and "password:" in findings_lower:
-            confirmed = True
-            confidence = "high"
-            evidence = "hydra returned valid credential pair"
-
-    elif tool_used == "run_nuclei":
-        if "[critical]" in findings_lower or "[high]" in findings_lower:
-            confirmed = True
-            confidence = "medium"
-            evidence = "nuclei template matched at high/critical severity"
-
-    elif tool_used == "run_ffuf":
-        if "200" in findings_lower or "301" in findings_lower or "302" in findings_lower:
-            confirmed = True
-            confidence = "medium"
-            evidence = "ffuf found responsive endpoint(s) suggesting exposed object references"
-
-    elif tool_used == "run_httpx":
-        if "200" in findings_lower:
-            confirmed = True
-            confidence = "low"
-            evidence = "endpoint reachable - manual review recommended for auth/session issues"
-
-    else:
-        if findings.strip():
-            confirmed = False
-            confidence = "low"
-            evidence = "no automated confirmation rule for this tool - needs manual review"
+    confirmed = breach_confirmed(tool, output, ok)
 
     return {
-        "tool_used": tool_used,
+        "tool_used": tool,
         "confirmed": confirmed,
-        "confidence": confidence,
-        "evidence": evidence,
-        "raw_findings": findings[:500],
+        "confidence": "high" if confirmed else "low",
+        "evidence": ("breach evidence confirmed (code execution, shell, or recovered "
+                     "credential)" if confirmed
+                     else "no breach evidence — finding needs manual review"),
+        "raw_findings": (output or "")[:500],
     }
 
 

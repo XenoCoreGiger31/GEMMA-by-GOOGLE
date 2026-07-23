@@ -66,7 +66,7 @@ In a second terminal:
 ```bash
 python3 agent_loop.py
 
->>> engage 192.168.64.3    # full autonomous recon + attack loop
+>>> engage 203.0.113.3    # full autonomous recon + attack loop
 >>> run nmap on 10.0.0.1   # single-goal query
 >>> exit                   # triggers HTML report generation
 ```

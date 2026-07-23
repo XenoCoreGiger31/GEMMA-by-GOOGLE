@@ -58,7 +58,7 @@ HALO_TOOL_BINARIES = {
     "run_gobuster": "gobuster", "run_ffuf": "ffuf", "run_enum4linux": "enum4linux",
     "run_setoolkit": "setoolkit", "run_subfinder": "subfinder",
     "run_nuclei": "nuclei", "run_katana": "katana", "run_httpx": "httpx",
-    "run_sherlock": "sherlock",
+    "run_sherlock": "sherlock", "run_metasploit": "msfconsole",
 }
 INTERNAL_TOOLS = {"run_command", "run_exploit", "write_file", "read_file"}
 

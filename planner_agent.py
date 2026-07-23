@@ -79,7 +79,7 @@ def plan(goal: str, engagement_id: str) -> AgentMessage:
 
 
 if __name__ == "__main__":
-    test_goal = "Assess 192.168.64.3 for exploitable web vulnerabilities"
+    test_goal = "Assess 203.0.113.3 for exploitable web vulnerabilities"
     msg = plan(test_goal, engagement_id="eng_test_001")
 
     print("Status:", msg.status)

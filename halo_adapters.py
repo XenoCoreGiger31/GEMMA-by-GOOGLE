@@ -3,7 +3,6 @@
 Provides the concrete collaborators the engine injects:
   * LMStudioModelClient — queries the local LLM endpoint, injecting the
     engagement preamble and just-in-time skills into the system prompt.
-  * HTTPToolExecutor    — dispatches tool steps to the HTTP tool server.
 
 A shared parse_model_response repairs the common defects in locally hosted
 model output. `requests` is imported lazily so this module loads without it.
@@ -14,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from halo_config import MODEL_URL, MODEL_NAME, MCP_URL, TOOL_TIMEOUT
+from halo_config import MODEL_URL, MODEL_NAME, TOOL_TIMEOUT
 from skills import load_skills, select_relevant_skills
 
 

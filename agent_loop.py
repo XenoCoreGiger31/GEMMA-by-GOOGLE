@@ -14,20 +14,53 @@ Then `engage <target>` for a full recon+attack engagement, or type any goal for
 a single model-driven tool chain.
 """
 
-import requests
+import requests  # still used by call_model() for LM Studio inference (unchanged)
 import json
-from skills import load_skills, select_relevant_skills
+import asyncio
+from contextlib import asynccontextmanager
+try:
+    from skills import load_skills, select_relevant_skills
+except Exception as _skills_err:  # noqa: BLE001 — skills are optional guidance
+    # skills.py (or its pyyaml dep, or the skills/ dir) may not be present on a
+    # minimal/air-gapped deploy. Skill injection is a nice-to-have prompt hint,
+    # never required to run an engagement, so degrade to no-op instead of
+    # refusing to start. Surfaced once at import so it's visible, not silent.
+    import sys as _sys
+    print(f"[SKILLS] disabled — {_skills_err.__class__.__name__}: {_skills_err}",
+          file=_sys.stderr)
+
+    def select_relevant_skills(text, max_skills=3):  # type: ignore[misc]
+        return []
+
+    def load_skills(names):  # type: ignore[misc]
+        return ""
 import re
 import os
 from datetime import datetime
 from agent_cache import NegativeCache
-from halo_config import MODEL_URL, MODEL_NAME, MCP_URL, TOOL_TIMEOUT
+from halo_config import MODEL_URL, MODEL_NAME, TOOL_TIMEOUT, MODEL_TIMEOUT
 from halo_logging import setup_logger
+
+# Official MCP client SDK — same `mcp` package the server (mcp_server.py) uses,
+# so this adds no new dependency (see requirements.txt: mcp>=1.2).
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from engagement import (Engagement, AuthorizationError, load_engagement_context,
                         build_engagement_system_prompt, classify)
-
+from exploitation_core import (
+    AgentMemory,
+    plan_exploit_step,
+    breach_confirmed,
+    tool_fits_port,
+    analyze_cred_output,
+    PORT_SERVICE_HINTS,
+    _SHELL_EVIDENCE,
+)  # noqa: F401  (re-exported for test back-compat)
+# Approach-A multi-agent engage path. Imported lazily-safe: orchestrator_agent pulls in
+# the agent specialists but never agent_loop, so there is no import cycle.
+from orchestrator_agent import run_orchestrated_engagement
 # Default preserves the original author's environment; override via HALO_LOG_DIR.
-LOG_DIR = os.environ.get("HALO_LOG_DIR", "/home/bigkali/security-agent/logs")
+LOG_DIR = os.environ.get("HALO_LOG_DIR", os.path.expanduser("~/security-agent/logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
 
 SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -40,6 +73,83 @@ log.info(f"[FILE] Log file: {LOG_FILE}")
 # Set by main() before the REPL loop starts. execute_step() fails closed
 # (denies every tool call) while this is None.
 ENGAGEMENT = None
+
+# ── MCP stdio transport ──────────────────────────────────────────────────────
+# The agent now talks to the tool arsenal over the Model Context Protocol via a
+# stdio subprocess, NOT the old HTTP tool server on port 8000 (that endpoint is
+# gone). The client OWNS the server's lifecycle: each engagement spawns its own
+# `python3 mcp_server.py` child, talks to it over JSON-RPC, and tears it down at
+# the end.
+#
+# IMPORTANT: do NOT launch mcp_server.py by hand in a second terminal anymore.
+# There is no separately-started server to connect to — this process spawns and
+# manages it. Running one manually would just sit idle; this loop won't use it.
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Spawn `python3 mcp_server.py` with the repo as cwd and the CURRENT environment
+# inherited, so .env-sourced HALO_* vars (HALO_HTTPX_BIN, HALO_TOOL_TIMEOUT, …)
+# pass straight through to the tools. (StdioServerParameters otherwise defaults
+# to a minimal env that would drop them.)
+_SERVER_PARAMS = StdioServerParameters(
+    command="python3",
+    args=[os.path.join(REPO_DIR, "mcp_server.py")],
+    cwd=REPO_DIR,
+    env=dict(os.environ),
+)
+
+
+@asynccontextmanager
+async def mcp_session():
+    """Spawn the MCP server subprocess and yield one initialized ClientSession.
+
+    Held open for a whole engagement (recon → attack) so the server process and
+    JSON-RPC session are reused across every tool call, then closed on exit.
+    """
+    async with stdio_client(_SERVER_PARAMS) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            yield session
+
+
+def _result_to_dict(result):
+    """Adapt an MCP ``CallToolResult`` back into the ``{status, stdout, …}`` dict.
+
+    mcp_server.py returns each tool's result dict JSON-encoded inside a single
+    text content block, so we concatenate the text blocks and decode them. This
+    preserves the exact shape downstream code reads (``result["stdout"]`` /
+    ``result["status"]``) — nothing else in the loop has to change.
+    """
+    text = "".join(
+        block.text for block in (result.content or [])
+        if getattr(block, "type", None) == "text" and getattr(block, "text", None)
+    )
+    if not text:
+        return {"status": "error", "stdout": "", "stderr": "",
+                "message": "empty MCP response"}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        # Server returned non-JSON text (e.g. an MCP framework error string).
+        return {"status": "error", "stdout": text, "stderr": "",
+                "message": "non-JSON MCP response"}
+    # If the framework flagged a tool-level error, don't let a stale "success"
+    # leak through from a partially-formed payload.
+    if getattr(result, "isError", False) and isinstance(data, dict):
+        data.setdefault("status", "error")
+    return data
+
+
+async def _call_tool(session, step):
+    """Invoke one MCP tool for a ``{"tool": name, <params…>}`` step.
+
+    Splits the flat step dict into the MCP ``call_tool(name, arguments)`` shape
+    (everything except the ``tool`` key becomes ``arguments``) and returns the
+    tool's normalized result dict.
+    """
+    name = step.get("tool")
+    arguments = {k: v for k, v in step.items() if k != "tool"}
+    result = await session.call_tool(name, arguments)
+    return _result_to_dict(result)
 
 TOOL_INSTRUCTIONS = """You are an autonomous penetration testing and offensive cybersecurity agent.
 You perform real penetration tests, vulnerability assessments, and offensive security operations.
@@ -115,54 +225,61 @@ NO explanations. NO markdown. NO trailing commas. ONLY the single JSON object.""
 # the authorization/scope preamble ahead of the tool instructions above.
 SYSTEM_PROMPT = TOOL_INSTRUCTIONS
 
+# ── Per-port attack steering ─────────────────────────────────────────────────
+# Recon already enumerated the open ports, so the attack loop must EXPLOIT, not
+# re-scan. These feed run_attack_loop's per-port goal: a short service hint so
+# the model knows what it's hitting, and a decision guide that pushes it toward
+# service-specific tools and multi-step chains instead of another nmap. Cred
+# brute-force is deliberately deprioritized until seclists wordlists are present,
+# so the loop doesn't stall on missing/huge wordlists.
+# (PORT_SERVICE_HINTS itself now lives in exploitation_core.py; imported back above.)
 
-class AgentMemory:
-    """In-engagement state: which ports are open, tried, breached, and found."""
+ATTACK_GUIDE = (
+    "Recon is COMPLETE — do NOT run masscan or nmap again.\n"
+    "Return a JSON chain of 2 to 4 DIFFERENT tools for THIS port, most specific first. "
+    "Prefer tools that need no password wordlist:\n"
+    "- ALWAYS start with run_searchsploit (keyword = the service, e.g. \"vsftpd\", "
+    "\"unrealircd\", \"samba\", \"distcc\") to find known exploits.\n"
+    "- Web (80/8080/8180/443): run_httpx, run_nuclei, run_nikto, run_gobuster. "
+    "run_sqlmap only on URLs with parameters.\n"
+    "- SMB (139/445): run_enum4linux, then run_searchsploit \"samba\".\n"
+    "- Known service backdoors (UnrealIRCd 6667, distccd 3632, vsftpd 2.3.4 :21, "
+    "ingreslock 1524): if searchsploit confirms one, use run_exploit with a working PoC "
+    "(this is human-approved before it runs).\n"
+    "- Credential brute-force (run_hydra/run_medusa) is LOW priority right now — wordlists "
+    "are not installed yet, so include at most ONE such step and only for ssh/ftp/mysql.\n"
+    "Do NOT repeat a tool that already failed on this port. Never pick run_command. JSON only."
+)
 
-    def __init__(self):
-        self.open_ports = []
-        self.tried_ports = []
-        self.successful_attacks = []
-        self.failed_attacks = []
-        self.findings = []
+# Network-less tools: they hit a local exploit DB or a local file, never the
+# target. Their "target" arg (if any) is a keyword, so the scope gate must use
+# the engagement scope for them, never the model-supplied string.
+LOCAL_DB_TOOLS = {"run_searchsploit", "run_john"}
 
-    def add_ports(self, ports):
-        """Record newly discovered open ports, de-duplicating against known ones."""
-        for p in ports:
-            if p not in self.open_ports:
-                self.open_ports.append(p)
-        log.info(f"[MEMORY] Open ports discovered: {self.open_ports}")
+# (CRED_TOOLS, CRED_PORTS, tool_fits_port, _SHELL_EVIDENCE, _CRED_EVIDENCE, _CRED_HIT,
+# analyze_cred_output, _INJECTION_EVIDENCE, breach_confirmed, and AgentMemory now live
+# in exploitation_core.py; imported back above.)
 
-    def add_finding(self, port, tool, detail):
-        """Record a successful finding on a port with the tool and detail."""
-        self.findings.append({"port": port, "tool": tool, "detail": detail, "time": datetime.now().strftime("%H:%M:%S")})
-        log.info(f"[SUCCESS] Port {port} → {tool}: {detail}")
+def parse_engagement_command(goal):
+    """Classify a REPL command into (mode, target).
 
-    def next_untried_port(self):
-        """Return the first open port not yet attacked, or None if all tried."""
-        for p in self.open_ports:
-            if p not in self.tried_ports:
-                return p
-        return None
+    mode is "multi", "single", or None. The multi form accepts *either*
+    separator — ``engage-multi <t>`` and ``engage multi <t>`` both route to the
+    orchestrated path — because a space where a hyphen was expected used to fall
+    through to the single-agent ``engage `` branch and glue "multi" onto the
+    target (``target="multi 203.0.113.3"``), which the scope gate then refused.
+    Matching is case-insensitive and surrounding whitespace is trimmed. When no
+    engagement prefix matches, returns (None, <stripped goal>).
+    """
+    s = goal.strip()
+    low = s.lower()
+    for prefix in ("engage-multi ", "engage multi "):
+        if low.startswith(prefix):
+            return "multi", s[len(prefix):].strip()
+    if low.startswith("engage "):  # hyphen-multi already returned above
+        return "single", s[len("engage "):].strip()
+    return None, s
 
-    def mark_tried(self, port, success=False):
-        """Mark a port as attacked and file it under successes or failures."""
-        if port not in self.tried_ports:
-            self.tried_ports.append(port)
-        if success:
-            self.successful_attacks.append(port)
-            log.info(f"[SUCCESS] Exploit landed on port {port}")
-        else:
-            self.failed_attacks.append(port)
-            log.warning(f"[FAIL] Nothing worked on port {port}")
-
-    def has_untried_ports(self):
-        """Return True while any discovered port has not yet been attacked."""
-        return any(p not in self.tried_ports for p in self.open_ports)
-
-    def summary(self):
-        """Return a dict snapshot of ports, attempts, and findings so far."""
-        return {"open_ports": self.open_ports, "tried": self.tried_ports, "successes": self.successful_attacks, "failures": self.failed_attacks, "findings": self.findings}
 
 def parse_model_response(raw):
     """Extract a ``{"chain": [...]}`` object from a raw model reply.
@@ -232,7 +349,7 @@ def call_model(goal):
         "top_p": 0.9
     }
     try:
-        response = requests.post(MODEL_URL, json=payload, timeout=TOOL_TIMEOUT)
+        response = requests.post(MODEL_URL, json=payload, timeout=MODEL_TIMEOUT)
         raw = response.json()["choices"][0]["message"]["content"]
         log.info(f"[MODEL] Response received ✅👍")
         return parse_model_response(raw)
@@ -249,6 +366,61 @@ def extract_ports(output):
         if port not in found:
             found.append(port)
     return found
+
+# An `nmap -sV` port line: fixed columns (PORT/proto STATE SERVICE) then a free-text
+# VERSION banner we split heuristically. Only STATE=open is captured.
+_SV_LINE = re.compile(r'^\s*(\d+)/(tcp|udp)\s+open\s+(\S+)(?:\s+(.*\S))?\s*$', re.I)
+# A version token: starts with a digit (2.3.4, 8.9p1, 5.0.51a-3ubuntu5, 1.1, and the
+# dotless RPC forms "2" / "2-4"). Requiring a dot missed the RPC banners, so their
+# bare version number was captured as the *product* (111 -> "2", 2049 -> "2-4"),
+# feeding msf_selector garbage terms; nmap products are alphabetic, so "leading digit"
+# is the reliable version signal here.
+_VERSION_TOKEN = re.compile(r'^\d[\w.\-]*$')
+
+def _split_product_version(banner):
+    """Split an nmap version banner into (product, version), heuristically.
+
+    Product is the leading words; version is the first token that looks like a
+    version number. Collection stops at the first parenthetical so extra-info
+    ("(protocol 2.0)", "((Ubuntu) DAV/2)") never leaks into the product. Either
+    piece may come back as ''."""
+    product_tokens = []
+    version = ""
+    for tok in banner.split():
+        if tok.startswith("("):
+            break
+        if _VERSION_TOKEN.match(tok):
+            version = tok
+            break
+        product_tokens.append(tok)
+    return " ".join(product_tokens), version
+
+def extract_fingerprints(output):
+    """Parse `nmap -sV` output into {port: {service, product, version, cpe, raw}}.
+
+    Pure and fail-open: lines it can't parse (masscan noise, headers, banners) are
+    skipped, never raised. With only port numbers known (no -sV) it returns {}, and
+    callers fall back to the static hint map — so this never regresses recon."""
+    fingerprints = {}
+    for line in (output or "").splitlines():
+        m = _SV_LINE.match(line)
+        if not m:
+            continue
+        port, service, banner = m.group(1), m.group(3), (m.group(4) or "")
+        product, version = _split_product_version(banner)
+        # Version-first banners (RPC: "2 (RPC #100000)") yield no product word —
+        # fall back to nmap's SERVICE column so the product is a real name, never
+        # a bare version number.
+        product = product or service
+        cpe_m = re.search(r'cpe:/\S+', banner)
+        fingerprints[port] = {
+            "service": service,
+            "product": product,
+            "version": version,
+            "cpe": cpe_m.group(0) if cpe_m else "",
+            "raw": line.strip(),
+        }
+    return fingerprints
 
 def _flush_stdin():
     """Drop any stale buffered input so a gate prompt truly waits for the operator."""
@@ -270,8 +442,13 @@ def _approve(action_class, target):
     return input("Authorize? [y/N] ").strip().lower() == "y"
 
 
-def _run_exploit_gated(step):
-    """Two-gate human approval for sandboxed exploit scripts."""
+async def _run_exploit_gated(session, step):
+    """Two-gate human approval for sandboxed exploit scripts.
+
+    Async because the sandbox test/attack phases now run over the MCP session,
+    but the ENTRY/FIRE gates (with termios stdin flush) are unchanged and still
+    fire *before* any tool call reaches the server.
+    """
     target = step.get("target")
 
     # ENTRY GATE — authorize entering the sandbox at all
@@ -289,11 +466,16 @@ def _run_exploit_gated(step):
     # TEST PHASE — isolated, no network
     test_step = dict(step); test_step["phase"] = "test"; test_step.pop("target", None)
     log.info("[GATE] Running script in isolated test phase (no network)")
-    r = requests.post(MCP_URL, json=test_step, timeout=TOOL_TIMEOUT).json()
+    try:
+        r = await _call_tool(session, test_step)
+    except Exception as e:
+        log.error(f"[ERROR] 😭🔥 exploit test phase exception: {e}")
+        return "", False
     test_out = r.get("stdout", "")
     print("\n--- TEST PHASE OUTPUT (isolated, no network) ---")
     print(test_out)
     print("--- END TEST OUTPUT ---")
+    log.info("[GATE] Test phase output ↓\n%s" % (test_out.strip() or "(no stdout)"))
 
     # FIRE GATE — authorize live attack against target
     print("\n" + "=" * 60)
@@ -309,7 +491,11 @@ def _run_exploit_gated(step):
 
     log.info("[GATE] Authorized. Running attack phase against target")
     attack_step = dict(step); attack_step["phase"] = "attack"
-    r = requests.post(MCP_URL, json=attack_step, timeout=TOOL_TIMEOUT).json()
+    try:
+        r = await _call_tool(session, attack_step)
+    except Exception as e:
+        log.error(f"[ERROR] 😭🔥 exploit attack phase exception: {e}")
+        return "", False
     out = r.get("stdout", "")
     err = r.get("stderr", "")
     ok = r.get("status", "") == "success"
@@ -319,32 +505,77 @@ def _run_exploit_gated(step):
         print("--- stderr ---")
         print(err)
     print("--- END ATTACK OUTPUT ---\n")
-    log.info("[GATE] Attack phase %s" % ("succeeded" if ok else "failed"))
+    # Persist the actual result into the log (and thus the report). Printing
+    # alone meant every failure reason scrolled off the operator's terminal and
+    # the report showed a bare "Attack phase failed" — blinding us for a whole
+    # engagement. The sandbox contract already embeds the inner script's
+    # stdout/stderr and an "=== EXIT n ===" marker in `out`, so logging it here
+    # captures the real errno (e.g. ENETUNREACH) and any EXPLOIT FAILED string.
+    log.info("[GATE] Attack phase %s%s" % (
+        "succeeded" if ok else "failed",
+        "" if ok else " — reason: %s" % (r.get("message") or "see sandbox output below"),
+    ))
+    if not ok:
+        detail = out.strip() if out and out.strip() else "(no stdout from sandbox)"
+        log.info("[GATE] Attack phase sandbox output ↓\n%s" % detail)
+        if err and err.strip():
+            log.info("[GATE] Attack phase sandbox stderr ↓\n%s" % err.strip())
     return out, ok
 
 
-def execute_step(step):
+def _deny_reason(eng, action_class, target):
+    """Recompute WHY the gate said no, so the log shows the real cause instead
+    of always blaming the action class. Read-only — never re-prompts."""
+    if eng.kill.is_halted():
+        return "kill switch engaged"
+    if not eng.scope.in_scope(target):
+        return f"target {target!r} out of scope {eng.ctx.scope_targets}"
+    mode = eng.autonomy.get(action_class, "never")
+    if mode == "never":
+        return f"action class {action_class!r} is never permitted"
+    if mode == "ask":
+        return f"operator declined approval for {action_class!r}"
+    return f"denied (class={action_class})"
+
+
+async def execute_step(session, step):
     """Run one tool step via the MCP server; returns (output, success).
 
     Every step passes ENGAGEMENT's authorization gate first (fails closed if
     no engagement is configured). ``run_exploit`` steps that clear the gate
     are additionally routed through the existing, unmodified two-gate
-    human-approval flow.
+    human-approval flow. Tool execution now goes over the long-lived MCP
+    ``session`` (stdio) rather than an HTTP POST.
     """
     tool = step.get("tool", "unknown")
     target = step.get("target", "")
     action_class = classify(tool)
-    if ENGAGEMENT is None or not ENGAGEMENT.authorize("halo", action_class, target):
-        reason = "no engagement configured" if ENGAGEMENT is None else f"denied (class={action_class})"
+    if ENGAGEMENT is None:
+        log.warning(f"[GATE] 🚫 {tool} on {target!r} — no engagement configured")
+        return "", False
+    # Normalize the target used for the SCOPE check only (the real call still
+    # gets the original target). Strip a trailing :port so "203.0.113.3:80"
+    # isn't rejected as out-of-scope, and for target-less local tools
+    # (searchsploit DB lookup, john) fall back to the engagement scope.
+    scope_target = re.sub(r":\d+$", "", target).strip() if target else ""
+    # Local, network-less tools query a database or a local file — their
+    # "target" is a keyword (e.g. searchsploit "proftpd"), NOT a host. The model
+    # sometimes stuffs that keyword into `target`, which then fails the scope
+    # check and blocks a harmless lookup. Always scope these to the engagement.
+    if tool in LOCAL_DB_TOOLS and ENGAGEMENT.ctx.scope_targets:
+        scope_target = ENGAGEMENT.ctx.scope_targets[0]
+    if not scope_target and ENGAGEMENT.ctx.scope_targets:
+        scope_target = ENGAGEMENT.ctx.scope_targets[0]
+    if not ENGAGEMENT.authorize("halo", action_class, scope_target):
+        reason = _deny_reason(ENGAGEMENT, action_class, scope_target)
         log.warning(f"[GATE] 🚫 {tool} on {target!r} — {reason}")
         return "", False
     if tool == "run_exploit":
-        return _run_exploit_gated(step)
+        return await _run_exploit_gated(session, step)
     start_time = datetime.now()
     log.info(f"[TOOL] Running → {tool} | params: { {k:v for k,v in step.items() if k != 'tool'} }")
     try:
-        result = requests.post(MCP_URL, json=step, timeout=TOOL_TIMEOUT)
-        result_data = result.json()
+        result_data = await _call_tool(session, step)
         output = result_data.get("stdout", "")
         status = result_data.get("status", "")
         duration = (datetime.now() - start_time).seconds
@@ -359,13 +590,13 @@ def execute_step(step):
         log.error(f"[ERROR] 😭🔥 {tool} exception: {e}")
         return "", False
 
-def run_recon(target, memory):
+async def run_recon(session, target, memory):
     """Scan the target for open ports and record what's found into memory."""
     log.info(f"[SCAN] Starting recon on {target}")
     goal = f"Scan {target} with masscan then nmap to find all open ports and services. JSON only."
     data = call_model(goal)
     for step in data.get("chain", []):
-        output, ok = execute_step(step)
+        output, ok = await execute_step(session, step)
         if output:
             ports = extract_ports(output)
             if ports:
@@ -373,8 +604,14 @@ def run_recon(target, memory):
                 log.info(f"[SCAN] 🎉😄 Found {len(ports)} open ports: {ports}")
             else:
                 log.warning(f"[SCAN] 😤💀 No ports found in output")
+            # Capture real product/version from `nmap -sV` so selection is no longer
+            # version-blind (additive; port extraction above is unchanged).
+            memory.add_fingerprints(extract_fingerprints(output))
 
-def run_attack_loop(target, memory, cache=None):
+# (plan_exploit_step now lives in exploitation_core.py; imported back above.)
+
+
+async def run_attack_loop(session, target, memory, cache=None):
     """Work each untried open port, exploiting via model-chosen tool chains.
 
     Skips permanently-blocked steps and records successes/failures into the
@@ -384,29 +621,48 @@ def run_attack_loop(target, memory, cache=None):
     while memory.has_untried_ports():
         port = memory.next_untried_port()
         log.info(f"[ATTACK] ⚔️  Targeting port {port}")
-        goal = f"Target: {target} Port: {port}. Failed ports: {memory.failed_attacks}. Exploit this port with any available tool. Try multiple tools if needed. JSON only."
+        service = memory.service_hint(port)
+        goal = (f"Target: {target}  Port: {port}  Service: {service}. "
+                f"Ports already tried (do not target again): {memory.failed_attacks}.\n"
+                f"{ATTACK_GUIDE}")
         data = call_model(goal)
         chain = data.get("chain", [])
+        # Deterministic, model-independent exploit selection: curated PoC first, else
+        # a Metasploit module chosen from the REAL fingerprint, else the model's chain.
+        chain = plan_exploit_step(port, target, service, chain, memory)
         if not chain:
             log.warning(f"[FAIL] 😤💀 No attack chain generated for port {port}")
             memory.mark_tried(port, success=False)
             continue
         success = False
         for step in chain:
+            tool = step.get("tool")
+            # ── Port↔tool fit gate (deterministic, model-independent) ──
+            if not tool_fits_port(tool, port):
+                log.info(f"[STEER] 🔧 {tool} is wrong for port {port} ({service}) — skipping, not attempting")
+                continue
             # ── Negative cache gate ──────────────────────────────
             if cache and not cache.should_attempt(step):
-                log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
+                log.info(f"[MEMORY] 🚫 Already failed this engagement — skipping: {tool}")
                 continue
             # ────────────────────────────────────────────────────
-            output, ok = execute_step(step)
-            if ok and output and any(x in output.lower() for x in ["password", "login", "session", "shell", "success", "found", "valid"]):
+            output, ok = await execute_step(session, step)
+            if breach_confirmed(tool, output, ok):
                 success = True
                 if cache:
                     cache.record_success(step)
-                memory.add_finding(port, step.get("tool"), output[:2000])
+                detail = output[:2000] if output else "attack phase succeeded (no stdout)"
+                # Relabel credential findings so the report states what was really
+                # found — real creds vs. a no-auth/accepts-all service — instead of
+                # echoing hydra's misleading "N valid passwords found".
+                if classify(tool) == "credential_attack":
+                    _n, _accepts_all, _summary = analyze_cred_output(output)
+                    if _summary:
+                        detail = _summary
+                memory.add_finding(port, tool, detail)
             elif not ok:
                 if cache:
-                    reason = f"tool={step.get('tool')} port={port} output_empty={not bool(output)}"
+                    reason = f"tool={tool} port={port} output_empty={not bool(output)}"
                     cache.record_failure(step, reason=reason)
         memory.mark_tried(port, success=success)
     log.info(f"[ATTACK] Attack loop complete")
@@ -417,28 +673,62 @@ def run_attack_loop(target, memory, cache=None):
     else:
         log.warning(f"[FAIL] 😤💀 No successful breaches this session")
 
-def run_full_engagement(target):
-    """Run recon then, if any ports opened, the attack loop; return the memory."""
+async def run_full_engagement(target):
+    """Run recon then, if any ports opened, the attack loop; return the memory.
+
+    Opens ONE MCP session (spawns one server subprocess) for the whole
+    engagement and reuses it across recon → attack, closing it on exit.
+    """
     memory = AgentMemory()
     cache = NegativeCache()
     log.info(f"[ENGAGE] 💣 Full engagement started on {target}")
-    run_recon(target, memory)
-    if memory.open_ports:
-        run_attack_loop(target, memory, cache)
-    else:
-        log.warning(f"[FAIL] 😤💀 No open ports found — aborting engagement")
+    async with mcp_session() as session:
+        await run_recon(session, target, memory)
+        if memory.open_ports:
+            await run_attack_loop(session, target, memory, cache)
+        else:
+            log.warning(f"[FAIL] 😤💀 No open ports found — aborting engagement")
     return memory
 
-def execute_chain(chain, cache=None):
-    """Run an explicit list of tool steps in order, honoring the cache gate."""
-    for i, step in enumerate(chain, 1):
-        log.info(f"[CHAIN] 🔗 Step {i} of {len(chain)}: {step.get('tool')}")
-        if cache and not cache.should_attempt(step):
-            log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
-            continue
-        output, ok = execute_step(step)
-        if not ok and cache:
-            cache.record_failure(step, reason=f"manual chain failure, step {i}")
+async def run_orchestrated(target):
+    """Approach-A multi-agent engagement: the orchestrator drives recon → attacker →
+    validator → report on the SAME honest, gated engine as run_full_engagement.
+
+    Kept parallel to run_full_engagement (the proven single-agent fallback) so the
+    6-agent structure goes live and stays testable without touching the proven
+    root-popping loop. Wires the spine's real primitives into the injected seams:
+    run_recon (gated recon that seeds memory), execute_step (the ENGAGEMENT-gated,
+    two-phase-approved executor — never mcp_client), and call_model. Reuses ONE MCP
+    session for the whole engagement, exactly like run_full_engagement.
+    """
+    memory = AgentMemory()
+    log.info(f"[ENGAGE] 🤖 Orchestrated (multi-agent) engagement started on {target}")
+    async with mcp_session() as session:
+        result = await run_orchestrated_engagement(
+            session, target, memory,
+            recon_fn=run_recon, execute_fn=execute_step, model_fn=call_model,
+            engagement_id=SESSION_ID,
+        )
+    report_path = f"{LOG_DIR}/{SESSION_ID}_orchestrated_report.md"
+    with open(report_path, "w") as f:
+        f.write(result["report"])
+    log.info(f"[REPORT] 📝 Orchestrated report written to {report_path}")
+    return result
+
+async def execute_chain(chain, cache=None):
+    """Run an explicit list of tool steps in order, honoring the cache gate.
+
+    Opens one short-lived MCP session for the whole chain (single-goal path).
+    """
+    async with mcp_session() as session:
+        for i, step in enumerate(chain, 1):
+            log.info(f"[CHAIN] 🔗 Step {i} of {len(chain)}: {step.get('tool')}")
+            if cache and not cache.should_attempt(step):
+                log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
+                continue
+            output, ok = await execute_step(session, step)
+            if not ok and cache:
+                cache.record_failure(step, reason=f"manual chain failure, step {i}")
 
 def _export_custody_log():
     if ENGAGEMENT is None:
@@ -468,7 +758,8 @@ def main():
     print("⚔️   AUTONOMOUS SECURITY AGENT")
     print("=" * 60)
     print("Commands:")
-    print("  engage <target>  - full recon + attack loop")
+    print("  engage <target>       - full recon + attack loop (single-agent)")
+    print("  engage-multi <target> - orchestrated recon→attack→validate→report (multi-agent)")
     print("  killswitch       - halt all further authorized action")
     print("  <any goal>       - single model query")
     print("  exit             - quit")
@@ -490,8 +781,18 @@ def main():
             if not goal:
                 continue
             log.info(f"[GOAL] 🎯 {goal}")
-            if goal.startswith("engage "):
-                target = goal.replace("engage ", "").strip()
+            mode, target = parse_engagement_command(goal)
+            if mode == "multi":
+                # Same scope gate as `engage` — the refusal lands in the custody log.
+                if not ENGAGEMENT.authorize("halo", "recon", target,
+                                            detail="orchestrated engagement start"):
+                    log.warning(f"[ENGAGEMENT] 🚫 {target} refused at engagement start")
+                    print(f"[ENGAGEMENT] {target} is out of authorized scope {ctx.scope_targets}. Refusing.")
+                    continue
+                result = asyncio.run(run_orchestrated(target))
+                log.info(f"[REPORT] 📝 Orchestrated engagement complete — "
+                         f"{len(result['memory'].successful_attacks)} port(s) breached")
+            elif mode == "single":
                 # Routed through authorize() (not a bare scope.in_scope() check)
                 # so this refusal — like every other gate decision — lands in
                 # the chain-of-custody log.
@@ -500,13 +801,15 @@ def main():
                     log.warning(f"[ENGAGEMENT] 🚫 {target} refused at engagement start")
                     print(f"[ENGAGEMENT] {target} is out of authorized scope {ctx.scope_targets}. Refusing.")
                     continue
-                memory = run_full_engagement(target)
+                # asyncio.run() drives the async engagement (which spawns and
+                # owns the MCP server subprocess) to completion, then returns.
+                memory = asyncio.run(run_full_engagement(target))
                 log.info(f"[REPORT] 📝 Engagement complete — run report generator for client memo")
             else:
                 data = call_model(goal)
                 chain = data.get("chain", [])
                 if chain:
-                    execute_chain(chain, cache=cache)
+                    asyncio.run(execute_chain(chain, cache=cache))
                 else:
                     log.warning("[FAIL] 😤💀 No tool chain generated")
         except KeyboardInterrupt:

@@ -6,10 +6,10 @@ The Vuln Discovery agent — reconnaissance stage for HALO's multi-agent
 pipeline.
 
 Handed a task from Orchestrator, Vuln Discovery calls the MCP tool
-server (localhost:8000) and runs a single tool per task — nmap, nikto,
-httpx, or whichever the task specifies — then returns a structured
-report of its findings. It observes and reports only; deciding how to
-act on the findings is Attacker's responsibility.
+server (spawned on demand over stdio via mcp_client) and runs a single
+tool per task — nmap, nikto, httpx, or whichever the task specifies —
+then returns a structured report of its findings. It observes and reports
+only; deciding how to act on the findings is Attacker's responsibility.
 
 It is the first full specialist, calling the MCP tool server directly in
 place of the earlier stub_vuln_discovery in orchestrator_agent.py.
@@ -70,7 +70,7 @@ def run_vuln_discovery(task: dict, engagement_id: str, target: str) -> AgentMess
 
 if __name__ == "__main__":
     test_task = {"task_id": "task_001", "goal": "Perform a comprehensive port scan"}
-    msg = run_vuln_discovery(test_task, engagement_id="eng_test_001", target="192.168.64.3")
+    msg = run_vuln_discovery(test_task, engagement_id="eng_test_001", target="203.0.113.3")
 
     print("Status:", msg.status)
     print("Tool used:", msg.result.get("tool_used"))

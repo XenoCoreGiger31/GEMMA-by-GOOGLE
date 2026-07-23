@@ -12,7 +12,7 @@ finding. Vuln Discovery and Attacker are dispatched as full specialists.
 
 from agent_schema import AgentMessage, AgentName, TaskStatus
 from vuln_discovery_agent import run_vuln_discovery
-from attacker_agent import run_attacker
+from attacker_agent import run_attacker, run_attacker_gated
 from validator_agent import run_validator, generate_report
 
 
@@ -77,6 +77,57 @@ def run_engagement(subtasks: list[dict], engagement_id: str, target: str) -> lis
     return results
 
 
+async def run_orchestrated_engagement(session, target, memory,
+                                      recon_fn, execute_fn, model_fn,
+                                      engagement_id: str = "", select_fn=None) -> dict:
+    """Approach-A multi-agent `engage`, on the shared honest engine.
+
+    The orchestrator coordinates the four live stages over ONE shared MCP session and
+    the process-wide ENGAGEMENT gate — without duplicating the proven single-agent loop
+    and without ever reaching for the ungated mcp_client:
+
+      1. recon_fn(session, target, memory) — the spine's gated run_recon, which
+         populates AgentMemory (open ports + real -sV fingerprints).
+      2. for each untried open port: run_attacker_gated(...) — curated PoC → gated msf →
+         model chain, breach_confirmed on real evidence only, executed through the
+         INJECTED gated execute_fn (the spine's execute_step in production).
+      3. validator re-confirms each attacker result via the same breach_confirmed.
+      4. generate_report renders the confirmed/unconfirmed findings for the client.
+
+    Every world-touching dependency (recon_fn, execute_fn, model_fn) is injected so the
+    pipeline is unit-testable with fakes and the gate-safety invariant holds: NO exploit
+    or scan runs except through the gated execute_fn the caller supplies.
+
+    Returns {"results": [AgentMessage...], "report": <markdown>, "memory": memory}.
+    """
+    results: list[AgentMessage] = []
+    validated_findings: list[dict] = []
+
+    await recon_fn(session, target, memory)
+
+    while memory.has_untried_ports():
+        port = memory.next_untried_port()
+        service = memory.service_hint(port)
+        print(f"[orchestrator] attacking port {port} ({service})")
+
+        attack_msg = await run_attacker_gated(
+            session, port, target, service, memory,
+            execute_fn=execute_fn, model_fn=model_fn, select_fn=select_fn,
+        )
+        attack_msg.engagement_id = engagement_id
+        results.append(attack_msg)
+        memory.mark_tried(port, success=(attack_msg.status == TaskStatus.SUCCESS))
+
+        validation_msg = run_validator(
+            {"task_id": f"validate_{port}"}, engagement_id, target, attack_msg.result,
+        )
+        results.append(validation_msg)
+        validated_findings.append(validation_msg.result)
+
+    report = generate_report(engagement_id, target, validated_findings)
+    return {"results": results, "report": report, "memory": memory}
+
+
 if __name__ == "__main__":
     test_subtasks = [
         {"task_id": "task_001", "goal": "Perform a comprehensive port scan on target", "assigned_to": "vuln_discovery"},
@@ -84,4 +135,4 @@ if __name__ == "__main__":
         {"task_id": "task_005", "goal": "Exploit identified vulnerabilities", "assigned_to": "attacker"},
     ]
 
-    results = run_engagement(test_subtasks, engagement_id="eng_test_001", target="192.168.0.1")
+    results = run_engagement(test_subtasks, engagement_id="eng_test_001", target="203.0.113.1")
