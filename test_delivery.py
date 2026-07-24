@@ -88,3 +88,22 @@ def test_blind_callback_payload_sends_only_nonce():
     p = d.blind_callback_payload("192.168.64.8", 40001, "mark7")
     assert "40001" in p and "mark7" in p and "192.168.64.8" in p
     assert "TARGET_IP" not in p
+
+
+import pytest
+
+
+def test_reverse_payload_rejects_injection_nonce():
+    with pytest.raises(ValueError):
+        d.reverse_payload("192.168.64.8", 40000, "$(whoami)")
+
+
+def test_blind_callback_rejects_injection_nonce():
+    with pytest.raises(ValueError):
+        d.blind_callback_payload("192.168.64.8", 40001, "`id`")
+
+
+def test_payload_accepts_hex_nonce_from_make_nonce():
+    n = d.make_nonce()
+    p = d.reverse_payload("192.168.64.8", 40000, n)
+    assert n in p and "TARGET_IP" not in p

