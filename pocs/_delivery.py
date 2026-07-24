@@ -59,3 +59,53 @@ def local_ip_for(target: str, _sock_factory=socket.socket) -> str:
         return s.getsockname()[0]
     finally:
         s.close()
+
+
+_UID_RE = re.compile(r"uid=(\d+)\(")
+
+
+def _drain(sock: socket.socket, timeout: float) -> bytes:
+    sock.settimeout(timeout)
+    chunks = []
+    try:
+        while True:
+            data = sock.recv(4096)
+            if not data:
+                break
+            chunks.append(data)
+    except OSError:
+        pass
+    return b"".join(chunks)
+
+
+def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
+                  timeout: float = 8.0) -> Breach:
+    """Probe an already-open shell socket with a challenge-response marker.
+
+    Confirmed only when the target echoes `<nonce>-MARK` — proves *our* command ran,
+    so a banner/tarpit that streams `uid=0` without the nonce is NOT a breach."""
+    nonce = nonce or make_nonce()
+    mark = f"{nonce}-MARK"
+    try:
+        sock.sendall(f"echo {mark}; id; uname -n\n".encode())
+        out = _drain(sock, timeout)
+    except OSError:
+        out = b""
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    text = out.decode("utf-8", "replace")
+    if mark not in text:
+        return Breach(confirmed=False, level="none", nonce=nonce, proof=text)
+    m = _UID_RE.search(text)
+    uid = m.group(1) if m else None
+    host = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line and line != mark and not line.startswith("uid=") and " " not in line:
+            host = line
+            break
+    return Breach(confirmed=True, level="shell", nonce=nonce, proof=text.strip(),
+                  uid=uid, host=host, exit_code="0")
