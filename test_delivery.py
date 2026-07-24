@@ -132,3 +132,52 @@ def test_listener_wait_for_nonce_true_on_match_false_on_timeout():
         assert lis.wait_for_nonce("tok42") is True
     with d._Listener(bind_ip="127.0.0.1", timeout=0.4) as lis2:
         assert lis2.wait_for_nonce("never") is False
+
+
+def test_establish_rce_reverse_shell_rung_confirms():
+    # inject drives a fake "target" that connects back to the listener and acts as a shell.
+    import threading, socket as s
+    nonce = "rv1"
+    def inject(cmd):
+        # emulate a target that runs `cmd` -> connect back, send MARK, then answer id/uname
+        def run():
+            # extract lport from the payload the primitive built
+            import re as _re
+            m = _re.search(r"/dev/tcp/([\d.]+)/(\d+)", cmd) or _re.search(r"\"(\d+\.\d+\.\d+\.\d+)\",(\d+)", cmd)
+            ip, port = m.group(1), int(m.group(2))
+            c = s.create_connection((ip, port), timeout=2.0)
+            c.sendall(f"{nonce}-MARK\n".encode())
+            c.recv(4096)                       # the echo/id probe from confirm_shell
+            c.sendall(b"uid=0(root) gid=0(root)\nvictim\n")
+            c.close()
+        threading.Thread(target=run, daemon=True).start()
+    br = establish = d.establish_rce(inject, "127.0.0.1", nonce=nonce, _ip="127.0.0.1",
+                                     ladder_timeout=3.0)
+    assert br.confirmed and br.level == "shell" and br.nonce == nonce
+
+
+def test_establish_rce_falls_through_to_blind_callback():
+    import threading, socket as s
+    nonce = "bl2"
+    calls = {"n": 0}
+    def inject(cmd):
+        calls["n"] += 1
+        # ignore the first two rungs (reverse, bind); only the blind-callback payload
+        # (which contains "| nc" or sends only the mark) triggers a callback.
+        if "-i" in cmd:                # reverse/bind shell payloads spawn /bin/sh -i
+            return
+        def run():
+            import re as _re
+            m = _re.search(r"nc ([\d.]+) (\d+)", cmd) or _re.search(r"/dev/tcp/([\d.]+)/(\d+)", cmd)
+            ip, port = m.group(1), int(m.group(2))
+            c = s.create_connection((ip, port), timeout=2.0)
+            c.sendall(f"{nonce}-MARK".encode()); c.close()
+        threading.Thread(target=run, daemon=True).start()
+    br = d.establish_rce(inject, "127.0.0.1", nonce=nonce, _ip="127.0.0.1", ladder_timeout=1.5)
+    assert br.confirmed and br.level == "blind-rce"
+
+
+def test_establish_rce_returns_unconfirmed_on_dead_target():
+    br = d.establish_rce(lambda cmd: None, "127.0.0.1", nonce="x", _ip="127.0.0.1",
+                         ladder_timeout=0.6)
+    assert br.confirmed is False and br.level == "none"

