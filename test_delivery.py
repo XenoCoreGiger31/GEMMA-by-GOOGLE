@@ -107,3 +107,28 @@ def test_payload_accepts_hex_nonce_from_make_nonce():
     n = d.make_nonce()
     p = d.reverse_payload("192.168.64.8", 40000, n)
     assert n in p and "TARGET_IP" not in p
+
+
+def test_listener_binds_ephemeral_and_accepts_a_connection():
+    import threading, socket as s
+    with d._Listener(bind_ip="127.0.0.1", timeout=3.0) as lis:
+        assert lis.port > 1024
+        def client():
+            c = s.create_connection(("127.0.0.1", lis.port), timeout=2.0)
+            c.sendall(b"hello"); c.close()
+        threading.Thread(target=client, daemon=True).start()
+        conn = lis.accept_one()
+        assert conn is not None
+        conn.close()
+
+
+def test_listener_wait_for_nonce_true_on_match_false_on_timeout():
+    import threading, socket as s
+    with d._Listener(bind_ip="127.0.0.1", timeout=3.0) as lis:
+        def client():
+            c = s.create_connection(("127.0.0.1", lis.port), timeout=2.0)
+            c.sendall(b"tok42-MARK"); c.close()
+        threading.Thread(target=client, daemon=True).start()
+        assert lis.wait_for_nonce("tok42") is True
+    with d._Listener(bind_ip="127.0.0.1", timeout=0.4) as lis2:
+        assert lis2.wait_for_nonce("never") is False
