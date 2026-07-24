@@ -69,3 +69,22 @@ def test_confirm_shell_rejects_empty_read():
     a, b = _socket.socketpair(); b.close()
     br = d.confirm_shell(a, nonce="x", timeout=0.3)
     assert br.confirmed is False
+
+
+def test_reverse_payload_has_interpreter_ladder_and_endpoint():
+    p = d.reverse_payload("192.168.64.8", 40000, "abc123")
+    for token in ("192.168.64.8", "40000", "abc123", "bash", "python", "perl", "nc"):
+        assert token in p, token
+    assert "TARGET_IP" not in p
+
+
+def test_bind_payload_embeds_port_and_nonce_and_uses_mkfifo_nc():
+    p = d.bind_payload(45333, "z9")
+    assert "45333" in p and "mkfifo" in p and "nc" in p
+    assert "TARGET_IP" not in p
+
+
+def test_blind_callback_payload_sends_only_nonce():
+    p = d.blind_callback_payload("192.168.64.8", 40001, "mark7")
+    assert "40001" in p and "mark7" in p and "192.168.64.8" in p
+    assert "TARGET_IP" not in p
