@@ -112,20 +112,27 @@ def _sha256(b: bytes) -> str:
 @dataclass(frozen=True)
 class Breach:
     confirmed: bool
-    level: str                 # "shell" | "blind-rce" | "none"
+    level: str                 # legacy alias: "shell" | "blind-rce" | "none"
     nonce: str
     proof: str
     uid: str | None = None
     host: str | None = None
     exit_code: str | None = None
+    evidence: str = "none"     # layered: "code-exec" | "uid-verified" | "interactive" | "none"
+    user: str | None = None
+    evidence_hash: str | None = None
+    evidence_meta: dict | None = None
 
     def __bool__(self) -> bool:
         return self.confirmed
 
     def __str__(self) -> str:
-        parts = [_EVIDENCE_PREFIX, f"nonce={self.nonce}", f"level={self.level}"]
+        parts = [_EVIDENCE_PREFIX, f"nonce={self.nonce}", f"level={self.level}",
+                 f"evidence={self.evidence}"]
         if self.uid is not None:
             parts.append(f"uid={self.uid}")
+        if self.user is not None:
+            parts.append(f"user={self.user}")
         if self.host is not None:
             parts.append(f"host={self.host}")
         if self.exit_code is not None:
@@ -176,16 +183,31 @@ def _drain(sock: socket.socket, timeout: float) -> bytes:
     return b"".join(chunks)
 
 
-def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
-                  timeout: float = 8.0) -> Breach:
-    """Probe an already-open shell socket with a challenge-response marker.
+def _proof_probe(nonce: str) -> bytes:
+    """Ask the shell to COMPUTE `$(id -u)`/`$(id -un)` around the nonce. A reflector
+    returns the literal `$( ... )` recipe and cannot satisfy the substituted marker."""
+    return f"echo {nonce}.$(id -u).$(id -un); uname -n\n".encode()
 
-    Confirmed only when the target echoes `<nonce>-MARK` — proves *our* command ran,
-    so a banner/tarpit that streams `uid=0` without the nonce is NOT a breach."""
-    nonce = nonce or make_nonce()
-    mark = f"{nonce}-MARK"
+
+def _marker_re(nonce: str):
+    return re.compile(re.escape(nonce) + r"\.(?P<uid>\d+)\.(?P<user>[A-Za-z0-9._-]+)")
+
+
+def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
+                  challenge=None, timeout: float = 8.0) -> Breach:
+    """Probe an already-open shell socket with an execution-derived challenge.
+
+    Confirmed only when the target returns the SUBSTITUTED marker `<nonce>.<uid>.<user>`
+    — proving a shell ran our command. A banner/tarpit/reflector that echoes our bytes
+    returns the literal `$(id -u)` recipe and is rejected."""
+    ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(nonce or make_nonce())
+    nonce = ch.nonce
     try:
-        sock.sendall(f"echo {mark}; id; uname -n\n".encode())
+        peer = sock.getpeername()[0]
+    except (OSError, IndexError):
+        peer = None
+    try:
+        sock.sendall(_proof_probe(nonce))
         out = _drain(sock, timeout)
     except OSError:
         out = b""
@@ -195,18 +217,28 @@ def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
         except OSError:
             pass
     text = out.decode("utf-8", "replace")
-    if mark not in text:
-        return Breach(confirmed=False, level="none", nonce=nonce, proof=text)
-    m = _UID_RE.search(text)
-    uid = m.group(1) if m else None
+    meta = {"peer": peer, "ts": time.time(), "channel": "interactive"}
+    ehash = _sha256(out)
+    # Reflection guard: the literal recipe means nothing executed.
+    if f"{nonce}.$(" in text:
+        return Breach(confirmed=False, level="none", evidence="none", nonce=nonce,
+                      proof=text, evidence_hash=ehash, evidence_meta=meta)
+    m = _marker_re(nonce).search(text)
+    # Require the marker to be line-terminated: a truncated read (cut mid-user, no
+    # trailing newline) is NOT a complete, executed marker and must be rejected.
+    if not m or not text[m.end():m.end() + 1].isspace():
+        return Breach(confirmed=False, level="none", evidence="none", nonce=nonce,
+                      proof=text, evidence_hash=ehash, evidence_meta=meta)
+    uid, user = m.group("uid"), m.group("user")
     host = None
     for line in text.splitlines():
-        line = line.strip()
-        if line and line != mark and not line.startswith("uid=") and " " not in line:
-            host = line
+        s = line.strip()
+        if s and not _marker_re(nonce).search(s):
+            host = s
             break
-    return Breach(confirmed=True, level="shell", nonce=nonce, proof=text.strip(),
-                  uid=uid, host=host, exit_code="0")
+    return Breach(confirmed=True, level="shell", evidence="interactive", nonce=nonce,
+                  proof=text.strip(), uid=uid, user=user, host=host, exit_code="0",
+                  evidence_hash=ehash, evidence_meta=meta)
 
 
 def _first_available(*variants: str) -> str:

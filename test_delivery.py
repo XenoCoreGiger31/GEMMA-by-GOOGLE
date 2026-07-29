@@ -48,18 +48,18 @@ def _socketpair_with_fake_shell(response_bytes):
     return a
 
 
-def test_confirm_shell_confirms_when_nonce_echoes_with_uid():
+def test_confirm_shell_confirms_when_substituted_marker_present():
     nonce = "n0nce123"
-    resp = f"{nonce}-MARK\nuid=0(root) gid=0(root)\nvictimhost\n".encode()
+    resp = f"{nonce}.0.root\nvictimhost\n".encode()
     sock = _socketpair_with_fake_shell(resp)
     br = d.confirm_shell(sock, nonce=nonce)
-    assert br.confirmed and br.level == "shell"
-    assert br.nonce == nonce and br.uid == "0"
+    assert br.confirmed and br.level == "shell" and br.evidence == "interactive"
+    assert br.nonce == nonce and br.uid == "0" and br.user == "root"
 
 
-def test_confirm_shell_rejects_when_nonce_absent_even_if_uid_present():
+def test_confirm_shell_rejects_reflected_or_uidless_output():
     nonce = "expected"
-    resp = b"uid=0(root) gid=0(root)\n"          # a tarpit echoing uid but NOT the nonce
+    resp = b"uid=0(root) gid=0(root)\n"          # banner echoing uid but NOT the marker
     sock = _socketpair_with_fake_shell(resp)
     br = d.confirm_shell(sock, nonce=nonce)
     assert br.confirmed is False and br.level == "none"
