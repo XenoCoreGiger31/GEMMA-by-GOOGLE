@@ -96,3 +96,72 @@ def test_confirm_shell_rejects_truncated_marker():
     sock = _fake_shell(lambda p: f"{ch.nonce}.0.ro".encode())   # cut off mid-user
     br = d.confirm_shell(sock, challenge=ch)
     assert br.confirmed is False
+
+
+def test_blind_payload_requires_computed_sum_not_echo():
+    ch = d.Challenge.ephemeral("blnd")
+    p = d.blind_callback_payload("192.0.2.8", 40001, ch)
+    # payload must instruct the target to ADD a+b, and must carry the nonce:
+    assert str(ch.a) in p and str(ch.b) in p and ch.nonce in p
+    assert "TARGET_IP" not in p
+
+
+def test_listener_wait_for_answer_true_only_on_correct_sum():
+    import socket as s
+    ch = d.Challenge.ephemeral("ans1")
+    with d._Listener(bind_ip="127.0.0.1", timeout=3.0) as lis:
+        def client():
+            c = s.create_connection(("127.0.0.1", lis.port), timeout=2.0)
+            c.sendall(f"{ch.nonce}:{ch.expected_sum}".encode()); c.close()
+        threading.Thread(target=client, daemon=True).start()
+        assert lis.wait_for_answer(ch) is True
+
+
+def test_listener_wait_for_answer_false_on_wrong_or_racing_answer():
+    import socket as s
+    cha = d.Challenge.ephemeral("A")
+    chb = d.Challenge.ephemeral("B")
+    with d._Listener(bind_ip="127.0.0.1", timeout=2.0) as lis:
+        def client():
+            c = s.create_connection(("127.0.0.1", lis.port), timeout=2.0)
+            c.sendall(f"{chb.nonce}:{chb.expected_sum}".encode()); c.close()  # answer for B
+        threading.Thread(target=client, daemon=True).start()
+        assert lis.wait_for_answer(cha) is False        # must not confirm A
+
+
+def test_establish_rce_rejects_pure_reflector_end_to_end():
+    # a "target" that reflects every injected command back to the listener verbatim:
+    import socket as s, re as _re
+    nonce = "reflx"
+    def inject(cmd):
+        mo = (_re.search(r"/dev/tcp/([\d.]+)/(\d+)", cmd)
+              or _re.search(r"nc ([\d.]+) (\d+)", cmd)
+              or _re.search(r"\"(\d+\.\d+\.\d+\.\d+)\",(\d+)", cmd))
+        if not mo:
+            return
+        ip, port = mo.group(1), int(mo.group(2))
+        def run():
+            try:
+                c = s.create_connection((ip, port), timeout=1.0)
+                c.sendall(cmd.encode())        # reflect the recipe, compute nothing
+                try:
+                    c.sendall(c.recv(4096))
+                except OSError:
+                    pass
+                c.close()
+            except OSError:
+                pass
+        threading.Thread(target=run, daemon=True).start()
+    br = d.establish_rce(inject, "127.0.0.1", nonce=nonce, _ip="127.0.0.1", ladder_timeout=1.0)
+    assert br.confirmed is False and br.evidence == "none"
+
+
+def test_wrong_target_answer_is_rejected_by_registry():
+    reg = d.ChallengeRegistry()
+    ch = reg.mint("192.0.2.3", channel="reverse")     # bound to .3
+    # an answer arriving as if for a different target must not validate:
+    assert reg.validate(ch, target="192.0.2.99", channel="reverse") is False
+
+
+def test_module_documents_relay_residual_limit():
+    assert "relay" in d.__doc__.lower()
