@@ -10,9 +10,12 @@ on *this* target — a tarpit streaming `uid=0(root)` cannot forge it.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import random
 import re
 import socket
+import time
 from dataclasses import dataclass
 
 _EVIDENCE_PREFIX = "HALO-EVIDENCE"
@@ -21,6 +24,89 @@ _EVIDENCE_PREFIX = "HALO-EVIDENCE"
 def make_nonce() -> str:
     """A fresh unpredictable hex token. os.urandom so a target can't guess it."""
     return os.urandom(12).hex()
+
+
+def _rand_operand() -> int:
+    """A per-attempt integer the target must ADD — forcing computation, not echo."""
+    return random.randint(1000, 9_999_999)
+
+
+def payload_fingerprint(payload: str) -> str:
+    """Short stable hash of a payload, for binding a challenge to what we sent."""
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class Challenge:
+    """A per-attempt proof challenge. `nonce` gives freshness; `a`,`b` force the target
+    to COMPUTE (sum) rather than echo; the binding fields tie the answer to THIS attempt,
+    target, payload and channel; `expiry` is a time.monotonic() deadline (0 => none)."""
+    nonce: str
+    a: int
+    b: int
+    target: str = ""
+    attempt_id: str = ""
+    payload_hash: str = ""
+    expected_channel: str = ""
+    expiry: float = 0.0
+
+    @property
+    def expected_sum(self) -> int:
+        return self.a + self.b
+
+    def expired(self, _now: float | None = None) -> bool:
+        if not self.expiry:
+            return False
+        now = time.monotonic() if _now is None else _now
+        return now > self.expiry
+
+    def matches(self, *, target: str | None = None, channel: str | None = None) -> bool:
+        if target is not None and self.target and target != self.target:
+            return False
+        if channel is not None and self.expected_channel and channel != self.expected_channel:
+            return False
+        return True
+
+    @classmethod
+    def ephemeral(cls, nonce: str) -> "Challenge":
+        """Unbound single-use challenge for callers still passing a bare nonce string."""
+        return cls(nonce=nonce, a=_rand_operand(), b=_rand_operand())
+
+
+def mint_challenge(target: str = "", *, attempt_id: str = "", payload_hash: str = "",
+                   channel: str = "", ttl: float = 30.0) -> Challenge:
+    return Challenge(
+        nonce=make_nonce(), a=_rand_operand(), b=_rand_operand(),
+        target=target, attempt_id=attempt_id, payload_hash=payload_hash,
+        expected_channel=channel,
+        expiry=(time.monotonic() + ttl) if ttl else 0.0,
+    )
+
+
+class ChallengeRegistry:
+    """Process-local mint + consume-once. Rejects replayed and cross-attempt answers."""
+
+    def __init__(self) -> None:
+        self._consumed: set[str] = set()
+
+    def mint(self, target: str = "", **kw) -> Challenge:
+        return mint_challenge(target, **kw)
+
+    def consume(self, ch: Challenge) -> bool:
+        if ch.nonce in self._consumed:
+            return False
+        self._consumed.add(ch.nonce)
+        return True
+
+    def validate(self, ch: Challenge, *, target: str | None = None,
+                 channel: str | None = None) -> bool:
+        return (not ch.expired()
+                and ch.matches(target=target, channel=channel)
+                and ch.nonce not in self._consumed)
+
+
+def _sha256(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -216,9 +302,6 @@ class _Listener:
         finally:
             conn.close()
         return f"{nonce}-MARK".encode() in data
-
-
-import time
 
 
 def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
