@@ -56,7 +56,7 @@ from exploitation_core import (
     PORT_SERVICE_HINTS,
     _SHELL_EVIDENCE,
 )  # noqa: F401  (re-exported for test back-compat)
-from pocs._delivery import make_nonce, ChallengeRegistry
+from pocs._delivery import make_nonce, ChallengeRegistry, payload_fingerprint
 # Approach-A multi-agent engage path. Imported lazily-safe: orchestrator_agent pulls in
 # the agent specialists but never agent_loop, so there is no import cycle.
 from orchestrator_agent import run_orchestrated_engagement
@@ -657,17 +657,24 @@ async def run_attack_loop(session, target, memory, cache=None):
             # the SAME token in breach_confirmed. Non-exploit tools use nonce="".
             nonce = ""
             if tool == "run_exploit":
-                # Bind the challenge to this target/attempt and register it; the wire
-                # still carries only the nonce string (ch.nonce), so nothing downstream
-                # changes — the binding + consume-once is enforced back here at the gate.
+                # Bind the challenge to this target/attempt/payload and register it; the
+                # wire still carries only the nonce string (ch.nonce), so nothing
+                # downstream changes — binding + consume-once is enforced back here at
+                # the gate. payload_hash records WHICH exact script earned the breach
+                # (auditable evidence), not an independent gate check.
                 ch = registry.mint(target, attempt_id=f"{port}:{tool}",
-                                   channel="run_exploit", ttl=0)
+                                   channel="run_exploit",
+                                   payload_hash=payload_fingerprint(step.get("code", "")),
+                                   ttl=0)
                 nonce = ch.nonce
                 step["nonce"] = nonce
             output, ok = await execute_step(session, step)
             if breach_confirmed(tool, output, ok, nonce=nonce,
                                 registry=registry, target=target):
                 success = True
+                if tool == "run_exploit":
+                    log.info(f"[BREACH] ✅ nonce={nonce} payload_hash={ch.payload_hash} "
+                             f"— breach bound to this exact payload")
                 if cache:
                     cache.record_success(step)
                 detail = output[:2000] if output else "attack phase succeeded (no stdout)"

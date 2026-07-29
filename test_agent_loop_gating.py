@@ -153,6 +153,14 @@ class RunExploitNonceWiringTests(unittest.TestCase):
         self.assertIsNotNone(captured["breach_registry"])
         self.assertEqual(captured["breach_target"], "10.0.0.5")
 
+    def test_minted_challenge_is_bound_to_the_payload(self):
+        from pocs._delivery import payload_fingerprint
+        captured = self._drive_one_run_exploit_step()
+        ch = captured["breach_registry"].get(captured["breach_nonce"])
+        self.assertIsNotNone(ch)
+        self.assertEqual(ch.payload_hash, payload_fingerprint("print(1)"))
+        self.assertEqual(ch.target, "10.0.0.5")
+
 
 if __name__ == "__main__":
     unittest.main()
