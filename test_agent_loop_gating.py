@@ -123,8 +123,10 @@ class RunExploitNonceWiringTests(unittest.TestCase):
             captured["step"] = dict(step)
             return "uid=0(root) HALO:%s" % step.get("nonce", ""), True
 
-        def fake_breach_confirmed(tool, output, ok, *, nonce=""):
+        def fake_breach_confirmed(tool, output, ok, *, nonce="", registry=None, target=""):
             captured["breach_nonce"] = nonce
+            captured["breach_registry"] = registry
+            captured["breach_target"] = target
             return True
 
         chain = [{"tool": "run_exploit", "code": "print(1)", "target": "10.0.0.5"}]
@@ -132,7 +134,6 @@ class RunExploitNonceWiringTests(unittest.TestCase):
         with patch.object(agent_loop, "call_model", return_value={"chain": chain}), \
              patch.object(agent_loop, "plan_exploit_step", return_value=chain), \
              patch.object(agent_loop, "tool_fits_port", return_value=True), \
-             patch.object(agent_loop, "make_nonce", return_value="feedface"), \
              patch.object(agent_loop, "execute_step", side_effect=fake_execute_step), \
              patch.object(agent_loop, "breach_confirmed",
                           side_effect=fake_breach_confirmed):
@@ -141,11 +142,16 @@ class RunExploitNonceWiringTests(unittest.TestCase):
 
     def test_run_exploit_step_gets_nonce_injected(self):
         captured = self._drive_one_run_exploit_step()
-        self.assertEqual(captured["step"].get("nonce"), "feedface")
+        n = captured["step"].get("nonce")
+        self.assertTrue(n and len(n) >= 16)          # a real minted challenge nonce
 
     def test_breach_confirmed_called_with_same_nonce(self):
         captured = self._drive_one_run_exploit_step()
-        self.assertEqual(captured["breach_nonce"], "feedface")
+        # the SAME minted nonce is injected into the step and passed to the gate,
+        # and the gate receives the engagement registry + target for consume-once.
+        self.assertEqual(captured["breach_nonce"], captured["step"].get("nonce"))
+        self.assertIsNotNone(captured["breach_registry"])
+        self.assertEqual(captured["breach_target"], "10.0.0.5")
 
 
 if __name__ == "__main__":

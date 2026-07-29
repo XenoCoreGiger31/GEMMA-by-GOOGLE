@@ -91,13 +91,23 @@ def mint_challenge(target: str = "", *, attempt_id: str = "", payload_hash: str 
 
 
 class ChallengeRegistry:
-    """Process-local mint + consume-once. Rejects replayed and cross-attempt answers."""
+    """Process-local mint + consume-once. Rejects replayed and cross-attempt answers.
+
+    `mint` records each challenge by nonce so a later gate can look it up and enforce
+    binding + one-time use via `confirm_once` — the orchestrator-side companion to the
+    PoC's own execution proof."""
 
     def __init__(self) -> None:
+        self._minted: dict[str, Challenge] = {}
         self._consumed: set[str] = set()
 
     def mint(self, target: str = "", **kw) -> Challenge:
-        return mint_challenge(target, **kw)
+        ch = mint_challenge(target, **kw)
+        self._minted[ch.nonce] = ch
+        return ch
+
+    def get(self, nonce: str) -> Challenge | None:
+        return self._minted.get(nonce)
 
     def consume(self, ch: Challenge) -> bool:
         if ch.nonce in self._consumed:
@@ -110,6 +120,17 @@ class ChallengeRegistry:
         return (not ch.expired()
                 and ch.matches(target=target, channel=channel)
                 and ch.nonce not in self._consumed)
+
+    def confirm_once(self, nonce: str, *, target: str | None = None,
+                     channel: str | None = None) -> bool:
+        """One-shot gate for an evidence nonce: True only if THIS registry minted it,
+        it still validates (not expired, target/channel match, not yet consumed), and
+        we consume it now. A replayed or unknown nonce returns False."""
+        ch = self._minted.get(nonce)
+        if ch is None or not self.validate(ch, target=target, channel=channel):
+            return False
+        self._consumed.add(nonce)
+        return True
 
 
 def _sha256(b: bytes) -> str:

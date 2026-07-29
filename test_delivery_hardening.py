@@ -165,3 +165,28 @@ def test_wrong_target_answer_is_rejected_by_registry():
 
 def test_module_documents_relay_residual_limit():
     assert "relay" in d.__doc__.lower()
+
+
+def test_registry_confirm_once_true_then_false_on_replay():
+    reg = d.ChallengeRegistry()
+    ch = reg.mint("192.0.2.3", channel="run_exploit")
+    assert reg.confirm_once(ch.nonce, target="192.0.2.3", channel="run_exploit") is True
+    assert reg.confirm_once(ch.nonce, target="192.0.2.3", channel="run_exploit") is False  # replay
+
+
+def test_registry_confirm_once_rejects_unknown_nonce():
+    reg = d.ChallengeRegistry()
+    reg.mint("192.0.2.3")                                  # different nonce minted
+    assert reg.confirm_once("deadbeefnonce", target="192.0.2.3") is False
+
+
+def test_registry_confirm_once_rejects_wrong_target():
+    reg = d.ChallengeRegistry()
+    ch = reg.mint("192.0.2.3", channel="run_exploit")
+    assert reg.confirm_once(ch.nonce, target="192.0.2.99", channel="run_exploit") is False
+
+
+def test_registry_get_returns_minted_challenge():
+    reg = d.ChallengeRegistry()
+    ch = reg.mint("192.0.2.3")
+    assert reg.get(ch.nonce) is ch and reg.get("nope") is None

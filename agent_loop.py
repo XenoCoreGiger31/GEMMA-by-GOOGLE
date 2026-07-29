@@ -56,7 +56,7 @@ from exploitation_core import (
     PORT_SERVICE_HINTS,
     _SHELL_EVIDENCE,
 )  # noqa: F401  (re-exported for test back-compat)
-from pocs._delivery import make_nonce
+from pocs._delivery import make_nonce, ChallengeRegistry
 # Approach-A multi-agent engage path. Imported lazily-safe: orchestrator_agent pulls in
 # the agent specialists but never agent_loop, so there is no import cycle.
 from orchestrator_agent import run_orchestrated_engagement
@@ -619,6 +619,10 @@ async def run_attack_loop(session, target, memory, cache=None):
     optional NegativeCache so future runs learn from this one.
     """
     log.info(f"[ATTACK] Starting attack loop on {target}")
+    # One challenge registry per engagement: each run_exploit attempt gets a bound,
+    # single-use nonce, and breach_confirmed consumes it — so a replayed or
+    # cross-attempt HALO-EVIDENCE line cannot be counted as a breach twice.
+    registry = ChallengeRegistry()
     while memory.has_untried_ports():
         port = memory.next_untried_port()
         log.info(f"[ATTACK] ⚔️  Targeting port {port}")
@@ -653,10 +657,16 @@ async def run_attack_loop(session, target, memory, cache=None):
             # the SAME token in breach_confirmed. Non-exploit tools use nonce="".
             nonce = ""
             if tool == "run_exploit":
-                nonce = make_nonce()
+                # Bind the challenge to this target/attempt and register it; the wire
+                # still carries only the nonce string (ch.nonce), so nothing downstream
+                # changes — the binding + consume-once is enforced back here at the gate.
+                ch = registry.mint(target, attempt_id=f"{port}:{tool}",
+                                   channel="run_exploit", ttl=0)
+                nonce = ch.nonce
                 step["nonce"] = nonce
             output, ok = await execute_step(session, step)
-            if breach_confirmed(tool, output, ok, nonce=nonce):
+            if breach_confirmed(tool, output, ok, nonce=nonce,
+                                registry=registry, target=target):
                 success = True
                 if cache:
                     cache.record_success(step)
