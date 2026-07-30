@@ -61,9 +61,11 @@ class FakeIngreslockShell:
             except OSError:
                 return
             text = cmd.decode("utf-8", "replace")
-            m = re.search(r"echo (\S+)", text)
-            if m and self.echo_mark:                 # a real shell runs `echo <mark>`
-                conn.sendall(m.group(1).encode() + b"\n")
+            m = re.search(r"echo (.+?)(?:;|$)", text)
+            if m and self.echo_mark:                 # a real shell RUNS the echo, substituting $(id ...)
+                uid, user = ("0", "root") if self.root else ("1000", "user")
+                marker = m.group(1).replace("$(id -u)", uid).replace("$(id -un)", user)
+                conn.sendall(marker.encode() + b"\n")
             if "id" in text:
                 if self.root:
                     conn.sendall(b"uid=0(root) gid=0(root) groups=0(root)\n")

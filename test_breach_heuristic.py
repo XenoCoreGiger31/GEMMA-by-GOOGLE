@@ -169,3 +169,44 @@ def test_run_exploit_without_nonce_keeps_legacy_behavior():
 def test_metasploit_session_banner_still_confirms_untouched():
     out = "[*] Command shell session 1 opened (192.0.2.8 -> 192.0.2.3)"
     assert breach_confirmed("run_metasploit", out, True) is True
+
+
+# ── Orchestrator-side bound challenge: consume-once + target binding ──────────
+from pocs._delivery import ChallengeRegistry
+
+
+def _evidence(nonce):
+    return f"HALO-EVIDENCE nonce={nonce} level=shell evidence=interactive uid=0 host=victim exit=0\nuid=0(root)"
+
+
+def test_registry_gate_confirms_once_then_rejects_replay():
+    reg = ChallengeRegistry()
+    ch = reg.mint("192.0.2.3", channel="run_exploit", ttl=0)
+    out = _evidence(ch.nonce)
+    assert breach_confirmed("run_exploit", out, True, nonce=ch.nonce,
+                            registry=reg, target="192.0.2.3") is True
+    # a replayed identical evidence line must NOT count as a second breach:
+    assert breach_confirmed("run_exploit", out, True, nonce=ch.nonce,
+                            registry=reg, target="192.0.2.3") is False
+
+
+def test_registry_gate_rejects_nonce_not_minted_here():
+    reg = ChallengeRegistry()
+    reg.mint("192.0.2.3", channel="run_exploit", ttl=0)      # a different nonce
+    forged = "cafebabecafe"
+    assert breach_confirmed("run_exploit", _evidence(forged), True, nonce=forged,
+                            registry=reg, target="192.0.2.3") is False
+
+
+def test_registry_gate_rejects_wrong_target():
+    reg = ChallengeRegistry()
+    ch = reg.mint("192.0.2.3", channel="run_exploit", ttl=0)
+    assert breach_confirmed("run_exploit", _evidence(ch.nonce), True, nonce=ch.nonce,
+                            registry=reg, target="192.0.2.99") is False
+
+
+def test_no_registry_keeps_nonce_only_behavior():
+    # registry omitted → legacy nonce-match gate, no consume-once (idempotent True)
+    out = _evidence("abc123")
+    assert breach_confirmed("run_exploit", out, True, nonce="abc123") is True
+    assert breach_confirmed("run_exploit", out, True, nonce="abc123") is True

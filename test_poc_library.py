@@ -114,9 +114,10 @@ class FakeVsftpdBackdoor:
             # `echo <nonce>-MARK; id; uname -n`: echo the nonce (proves our
             # command ran), then answer id, then the hostname.
             text = cmd.decode("utf-8", "replace")
-            m = re.search(r"echo (\S+)", text)
-            if m:
-                shell.sendall(m.group(1).encode() + b"\n")
+            m = re.search(r"echo (.+?)(?:;|$)", text)
+            if m:                                    # a real shell RUNS the echo, substituting $(id ...)
+                marker = m.group(1).replace("$(id -u)", "0").replace("$(id -un)", "root")
+                shell.sendall(marker.encode() + b"\n")
             if "id" in text:
                 shell.sendall(b"uid=0(root) gid=0(root) groups=0(root)\n")
             shell.sendall(b"metasploitable\n")
