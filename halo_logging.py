@@ -11,37 +11,37 @@ from datetime import datetime
 
 class EmojiFormatter(logging.Formatter):
     ICONS = {
-        "SCAN":    "🔍",
-        "ATTACK":  "⚔️ ",
-        "SUCCESS": "🎉😄",
-        "FAIL":    "😤💀",
-        "ERROR":   "😭🔥",
-        "TOOL":    "✅👍",
-        "MEMORY":  "🧠",
-        "MODEL":   "🤖",
-        "CHAIN":   "🔗",
-        "REPORT":  "📝",
-        "ENGAGE":  "💣",
-        "GOAL":    "🎯",
-        "START":   "🚀",
-        "FILE":    "📁",
-        "WEB":     "🌐",
-        "CREDS":   "🔑",
+"SCAN":"",
+"ATTACK":"",
+"SUCCESS":"",
+"FAIL":"",
+"ERROR":"",
+"TOOL":"",
+"MEMORY":"",
+"MODEL":"",
+"CHAIN":"",
+"REPORT":"",
+"ENGAGE":"",
+"GOAL":"",
+"START":"",
+"FILE":"",
+"WEB":"",
+"CREDS":"",
     }
 
     def format(self, record):
         time = datetime.now().strftime("%H:%M:%S")
         msg = record.getMessage()
-        icon = "ℹ️ "
+        icon ="ℹ"
         for key, emoji in self.ICONS.items():
             if f"[{key}]" in msg:
                 icon = emoji
                 msg = msg.replace(f"[{key}]", "").strip()
                 break
         if record.levelno == logging.WARNING:
-            icon = "😤💀"
+            icon =""
         if record.levelno == logging.ERROR:
-            icon = "😭🔥"
+            icon =""
         return f"[{time}] {icon}  {msg}"
 
 
