@@ -73,7 +73,7 @@ On failure, `status` is `"error"` and the object also carries `error_type`,
 
 ## Tool reference
 
-All 30 tools, grouped by role. **Bold** arguments are required; the rest are
+All 31 tools, grouped by role. **Bold** arguments are required; the rest are
 optional, with their default shown in parentheses. Argument schemas are
 enforced against each tool's `inputSchema` before execution.
 
@@ -86,6 +86,7 @@ enforced against each tool's `inputSchema` before execution.
 | `run_netstat` | List connections and listening sockets (falls back to `ss`) | flags (`-tuln`) |
 | `run_httpx` | Probe hosts for live HTTP services (status, title, tech) | **target**, flags |
 | `run_subfinder` | Passively enumerate subdomains of a domain | **domain**, silent (`true`) |
+| `run_theharvester` | Passive OSINT — harvest emails, subdomains and hosts for a domain from public sources | **domain**, sources (`duckduckgo,crtsh,bing`), limit (`100`) |
 | `run_katana` | Crawl a web target and map its attack surface | **target**, depth (`3`) |
 | `run_shodan` | Look up an internet-exposed host in Shodan | **query** |
 
