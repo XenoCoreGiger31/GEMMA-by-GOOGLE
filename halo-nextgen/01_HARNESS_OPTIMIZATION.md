@@ -92,7 +92,7 @@ Concrete, file-anchored friction points, each with a fix.
 ### A3. Do we have a clear single direction? 
 
 Yes — but it's **implicit and diluted by procedure**. The harness reads as "a
-box of 29 tools with a loop around it." The interview questions below exist to
+box of 30 tools with a loop around it." The interview questions below exist to
 confirm the *decision-first* reframing before any of this is deployed.
 
 **Interview me about (blocking questions for deployment, not for building):**
