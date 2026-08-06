@@ -6,13 +6,13 @@
 
 # 🔐 GEMMA-by-GOOGLE — HALO
 
-**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a 30-tool arsenal through recon, attack, and reporting, exposed as a standard Model Context Protocol (MCP) server. No cloud, no API keys.**
+**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a 31-tool arsenal through recon, attack, and reporting, exposed as a standard Model Context Protocol (MCP) server. No cloud, no API keys.**
 
 [What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Contributing](CONTRIBUTING.md)
 
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Python](https://img.shields.io/badge/Python-3.10+-green)
-![Tools](https://img.shields.io/badge/Tools-30-red)
+![Tools](https://img.shields.io/badge/Tools-31-red)
 ![LM Studio](https://img.shields.io/badge/LM_Studio-Compatible-purple)
 ![Platform](https://img.shields.io/badge/Platform-Kali_Linux-blueviolet)
 ![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
@@ -47,7 +47,7 @@ One word starts an engagement: **`engage`**.
 
 ## Tool Arsenal
 
-30 tools sit behind the agent's decision loop, all routed through the same
+31 tools sit behind the agent's decision loop, all routed through the same
 failure-caching layer. They are defined once in the `TOOLS` schema registry in
 `halo_tools.py` and served over both transports (MCP and HTTP).
 
@@ -55,6 +55,7 @@ failure-caching layer. They are defined once in the `TOOLS` schema registry in
 | Tool | Purpose |
 |------|---------|
 | `run_subfinder` | Subdomain enumeration |
+| `run_theharvester` | Passive OSINT — emails, subdomains, hosts |
 | `run_httpx` | HTTP probing and fingerprinting |
 | `run_katana` | Web crawling |
 | `run_sherlock` | Username OSINT across 90+ platforms |
@@ -181,7 +182,7 @@ specialist at a time, each verified against a real target before moving on:
 - **Debugger:** diagnoses failed tool runs and adjusts
 - **Validator + reporting:** findings are confirmed against real evidence before they count, then compiled into a client-readable report
 
-From there the arsenal grew to 30 tools, and the negative-experience cache turned
+From there the arsenal grew to 31 tools, and the negative-experience cache turned
 trial-and-error into persistent learning across sessions. Active development
 continues — new capabilities are pushed regularly.
 

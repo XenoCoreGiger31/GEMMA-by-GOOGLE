@@ -20,7 +20,7 @@ Runs on a cadence (default ~30 days) once the MCP server is on.
 | Check | Question | Detects |
 |---|---|---|
 | **Tool currency** | Are my Kali tools behind the latest? | "nuclei 3.1 installed, 3.3 available" |
-| **Arsenal integrity** | Did an upgrade *break* one of the 30 tools? | "sqlmap fails its smoke test" — caught before an engagement |
+| **Arsenal integrity** | Did an upgrade *break* one of the 31 tools? | "sqlmap fails its smoke test" — caught before an engagement |
 | **Framework currency** | What has the frontier shipped that I haven't adopted? | a prioritized "modernize me" backlog (adaptive thinking, R1-distill decider, latest ATT&CK…) |
 | **Self health** | Do my own modules still import / pass self-tests? | internal breakage |
 

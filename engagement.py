@@ -202,6 +202,7 @@ _TOOL_CLASS = {
     "run_subfinder": "recon", "run_wafw00f": "recon", "run_katana": "recon",
     "run_shodan": "recon", "run_enum4linux": "recon", "read_file": "recon",
     "run_phoneinfoga": "recon", "run_cloudfox": "recon",
+    "run_theharvester": "recon",
     "run_nuclei": "active_scan", "run_nikto": "active_scan",
     "run_gobuster": "active_scan", "run_ffuf": "active_scan",
     "run_searchsploit": "active_scan",

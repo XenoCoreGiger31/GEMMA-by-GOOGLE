@@ -57,6 +57,7 @@ HALO_TOOL_BINARIES = {
     "run_searchsploit": "searchsploit", "run_curl": "curl", "run_wget": "wget",
     "run_gobuster": "gobuster", "run_ffuf": "ffuf", "run_enum4linux": "enum4linux",
     "run_setoolkit": "setoolkit", "run_subfinder": "subfinder",
+    "run_theharvester": "theHarvester",
     "run_nuclei": "nuclei", "run_katana": "katana", "run_httpx": "httpx",
     "run_sherlock": "sherlock", "run_metasploit": "msfconsole",
 }

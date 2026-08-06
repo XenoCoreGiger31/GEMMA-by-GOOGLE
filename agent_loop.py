@@ -173,6 +173,7 @@ AVAILABLE TOOLS:
 - run_medusa: Fast credential brute forcing
 - run_ncrack: Network authentication cracking (params: target, service, wordlist)
 - run_subfinder: Subdomain enumeration (params: domain)
+- run_theharvester: Passive OSINT — emails, subdomains, hosts for a domain (params: domain, sources, limit)
 - run_nuclei: Vulnerability template scanner (params: target, templates, severity)
 - run_katana: Web crawler and attack surface mapper (params: target, depth)
 - run_ffuf: Fast web fuzzer for dirs, params, vhosts (params: url, wordlist, param)

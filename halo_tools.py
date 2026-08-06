@@ -708,6 +708,16 @@ class ToolExecutor:
             f"{sherlock_bin} {username} --print-found --timeout 10", timeout=120
         )
 
+    def _run_theharvester(self, p):
+        """Passive OSINT: harvest emails, subdomains and hosts for a domain from
+        public sources (accepts `domain` or `target`; `sources`/`source` alias)."""
+        domain = (p.get("domain") or p.get("target") or "").strip()
+        if not domain:
+            return self._missing("No domain specified for theHarvester")
+        sources = (p.get("sources") or p.get("source") or "duckduckgo,crtsh,bing").strip()
+        limit = _clamp_int(p.get("limit", 100), lo=1, hi=1000, default=100)
+        return self._execute_command(f"theHarvester -d {domain} -b {sources} -l {limit}")
+
     # Name → bound handler. Defined after the methods exist.
     _DISPATCH = {
         "run_command": _run_command,
@@ -740,6 +750,7 @@ class ToolExecutor:
         "run_katana": _run_katana,
         "run_httpx": _run_httpx,
         "run_sherlock": _run_sherlock,
+        "run_theharvester": _run_theharvester,
     }
 
 
@@ -854,6 +865,10 @@ TOOLS = [
      "inputSchema": _s("", ["target"], target=_str("Target for the SE attack."), attack_type=_str("SET menu selection.", "1"))},
     {"name": "run_subfinder", "description": "Passively enumerate subdomains of a domain.",
      "inputSchema": _s("", ["domain"], domain=_str("Apex domain."), silent=_bool("Silent output.", True))},
+    {"name": "run_theharvester", "description": "Passive OSINT: harvest emails, subdomains and hosts for a domain from public sources.",
+     "inputSchema": _s("", ["domain"], domain=_str("Apex domain, e.g. example.com."),
+                       sources=_str("Comma-separated OSINT sources.", "duckduckgo,crtsh,bing"),
+                       limit=_int("Max results per source.", 100))},
     {"name": "run_nuclei", "description": "Run community vulnerability templates against a target.",
      "inputSchema": _s("", ["target"], target=_str("Target URL."), templates=_str("Template path or tag filter."),
                        severity=_str("Severity filter, e.g. 'medium,high,critical'."))},
