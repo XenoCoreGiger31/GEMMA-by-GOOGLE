@@ -153,7 +153,7 @@ def build_report(input_path, output_path=None):
 </head>
 <body>
 <header>
-  <h1>🔐 HALO — Engagement Report</h1>
+  <h1> HALO — Engagement Report</h1>
   <div class="sub">Autonomous penetration testing agent · generated {generated}</div>
 </header>
 <main>
@@ -194,7 +194,7 @@ def main(argv):
         return 1
     output_path = argv[2] if len(argv) > 2 else None
     out = build_report(input_path, output_path)
-    print(f"[REPORT] 📝 HTML report written to {out}")
+    print(f"[REPORT] HTML report written to {out}")
     return 0
 
 
