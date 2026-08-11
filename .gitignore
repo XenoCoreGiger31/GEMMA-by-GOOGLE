@@ -16,3 +16,4 @@ session_*.html
 .DS_Store
 .serena/
 nikto_*.txt
+wordlists.zip
