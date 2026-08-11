@@ -35,6 +35,7 @@ except Exception as _skills_err:  # noqa: BLE001 — skills are optional guidanc
     def load_skills(names):  # type: ignore[misc]
         return ""
 import re
+import ipaddress
 import os
 from datetime import datetime
 from agent_cache import NegativeCache
@@ -182,6 +183,17 @@ AVAILABLE TOOLS:
 - run_shodan: Shodan host lookup for internet-exposed services and open ports (params: query = ip or hostname)
 - run_phoneinfoga: phone number OSINT footprinting (params: number = phone number in international format)
 - run_cloudfox: AWS cloud attack-surface enumeration (params: profile = optional AWS profile, command_type = optional, defaults to all-checks)
+- run_dalfox: XSS scanner — reflected/stored/DOM (params: url)
+- run_feroxbuster: Recursive web content/directory discovery (params: url, wordlist)
+- run_gowitness: Screenshot a web target for visual recon (params: url)
+- run_dnsx: DNS resolution/probing — A records and responses (params: domain)
+- run_gau: Fetch known URLs from OTX/Wayback/Common Crawl (params: domain)
+- run_waybackurls: Fetch a domain's historical URLs from the Wayback Machine (params: domain)
+- run_amass: Subdomain enumeration via OWASP Amass, passive by default (params: domain, passive)
+- run_ghosttrack: OSINT for a username/IP/phone via GhostTrack (params: target)
+- run_spiderfoot: Headless SpiderFoot OSINT scan (params: target, types)
+- run_recon_ng: Drive the recon-ng OSINT framework non-interactively (params: resource, target)
+- run_phonextract: Phone-number OSINT/extraction lookup (params: phone)
 
 RECON WORKFLOW - follow this order for web targets:
 1. run_httpx first — probe for live hosts, status codes, tech stack
@@ -358,6 +370,79 @@ def call_model(goal):
     except Exception as e:
         log.error(f"[ERROR] Model call failed: {e}")
         return {"chain": []}
+
+def _apex_of(target):
+    """Reduce a target to its bare host: strip scheme, path, and :port."""
+    host = re.sub(r"^[a-z]+://", "", (target or "").strip().lower()).split("/")[0]
+    return re.sub(r":\d+$", "", host)
+
+
+def is_domain_target(target):
+    """True if the target is a DNS name (not a bare IP / IP:port). Gates the
+    web-recon phase — subdomain/URL enumeration is meaningless against an IP."""
+    host = _apex_of(target)
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False            # it parsed as an IP → not a domain
+    except ValueError:
+        return "." in host and any(c.isalpha() for c in host)
+
+
+def extract_subdomains(output, apex):
+    """Pull hostnames ending in `apex` out of recon-tool output. Returns strict
+    subdomains (at least one label before the apex); the bare apex is excluded."""
+    apex = _apex_of(apex)
+    if not output or not apex:
+        return []
+    pat = re.compile(r'\b((?:[a-z0-9_-]+\.)+' + re.escape(apex) + r')\b', re.I)
+    found = []
+    for h in pat.findall(output):
+        h = h.lower().strip(".")
+        if h != apex and h not in found:
+            found.append(h)
+    return found
+
+
+def extract_urls(output):
+    """Pull unique http(s) URLs out of tool output, trimming trailing punctuation."""
+    if not output:
+        return []
+    found = []
+    for u in re.findall(r'https?://[^\s"\'<>]+', output):
+        u = u.rstrip('.,);]')
+        if u and u not in found:
+            found.append(u)
+    return found
+
+
+# CTF flag shapes, deliberately narrow so ordinary punctuation never registers:
+#   • prefix + {…}            — flag{…}/ctfio{…}/ctf{…}  (classic style)
+#   • [^FLAG^…^FLAG^]         — ctfio.com's own delimiter style
+FLAG_RE = re.compile(
+    r'\b(?:flag|ctfio|ctf)\{[^}\r\n]{1,200}\}'
+    r'|\[\^FLAG\^[^\]\r\n]{1,200}\^FLAG\^\]',
+    re.I)
+
+
+def extract_flags(output):
+    """Pull unique CTF flag strings (flag{…}/ctfio{…}/ctf{…}) out of any output."""
+    if not output:
+        return []
+    found = []
+    for m in FLAG_RE.findall(output):
+        if m not in found:
+            found.append(m)
+    return found
+
+
+def _record_flags(output, memory, source):
+    """Scan one tool's output for flags; record + announce each with a banner."""
+    for flag in extract_flags(output):
+        memory.add_flag(flag, source)
+        log.info("🚩🚩🚩 FLAG CAPTURED via %s → %s" % (source, flag))
+
 
 def extract_ports(output):
     """Pull unique port numbers out of scanner output via a few open-port patterns."""
@@ -592,6 +677,87 @@ async def execute_step(session, step):
         log.error(f"[ERROR] 😭🔥 {tool} exception: {e}")
         return "", False
 
+# Passive/fast domain-enumeration tools, run in order BEFORE the port scan when
+# the target is a DNS name. Deterministic on purpose: the model never reliably
+# picked these, so an engage against a domain never enumerated it. Kept passive
+# (no active web probing — httpx/gowitness/ffuf belong in the attack phase) so
+# the phase is quick and can't stall on an active-scan timeout.
+WEB_RECON_TOOLS = ["run_subfinder", "run_amass", "run_theharvester",
+                   "run_dnsx", "run_gau", "run_waybackurls"]
+
+
+async def run_web_recon(session, target, memory):
+    """Domain-recon phase: enumerate subdomains and URLs before the port scan.
+
+    Runs each WEB_RECON_TOOLS entry against the apex through the same
+    ENGAGEMENT-gated ``execute_step`` path (so every call is scoped and logged),
+    then feeds each tool's output through the subdomain/URL extractors into
+    memory. Best-effort: a missing or failing tool is skipped, never fatal —
+    the port-scan recon still runs after this returns."""
+    apex = _apex_of(target)
+    log.info(f"[RECON] 🌐 Web recon on {apex} — subdomains, hosts, URLs")
+    for tool in WEB_RECON_TOOLS:
+        output, _ok = await execute_step(session, {"tool": tool, "domain": apex, "target": apex})
+        if not output:
+            continue
+        memory.add_subdomains(extract_subdomains(output, apex))
+        memory.add_urls(extract_urls(output))
+    log.info(f"[RECON] 🌐 Web recon complete — "
+             f"{len(memory.subdomains)} subdomain(s), {len(memory.urls)} URL(s)")
+
+
+# Where a beginner-CTF web flag most often hides — appended to the base URL and
+# fetched directly, before falling back to fuzzing the whole tree.
+FLAG_SPOTS = ["/robots.txt", "/flag", "/flag.txt", "/flag.php", "/flag.html",
+              "/.git/config", "/sitemap.xml", "/admin", "/secret", "/hidden",
+              "/backup", "/.env", "/config.php", "/index.php?id=1"]
+
+
+async def run_web_attack(session, target, memory):
+    """Active web-scan + flag hunt against the live web app.
+
+    Runs only when a web port is open. Points the content-discovery / vuln tools
+    we installed (feroxbuster, nuclei, dalfox) plus a curl sweep of the usual
+    flag spots at the real app, and scans EVERY tool's output for a flag string —
+    stopping the moment one is bagged. All calls go through the gated
+    execute_step path and are scoped to the target host (bare host in `target`;
+    the full URL rides in each tool's own param)."""
+    if "443" not in memory.open_ports and "80" not in memory.open_ports:
+        return
+    host = _apex_of(target)
+    scheme = "https" if "443" in memory.open_ports else "http"
+    base = f"{scheme}://{host}"
+    log.info(f"[ATTACK] 🕸️  Web attack on {base} — content discovery, flag hunt, templates, XSS")
+
+    async def fire(step):
+        out, _ok = await execute_step(session, step)
+        if out:
+            _record_flags(out, memory, step.get("tool"))
+        return out or ""
+
+    # 1. Content discovery — surface hidden endpoints (incl. behind a WAF).
+    ferox_out = await fire({"tool": "run_feroxbuster", "url": base, "target": host})
+    discovered = extract_urls(ferox_out)
+    memory.add_urls(discovered)
+
+    # 2. Fetch the usual flag spots + a few discovered paths; scan bodies.
+    for url in [base + s for s in FLAG_SPOTS] + discovered[:15]:
+        await fire({"tool": "run_curl", "url": url, "target": host})
+        if memory.flags:
+            break
+
+    # 3. If still no flag, run filtered CVE templates + XSS on the app.
+    if not memory.flags:
+        await fire({"tool": "run_nuclei", "target": host, "severity": "medium,high,critical"})
+        await fire({"tool": "run_dalfox", "url": base, "target": host})
+
+    if memory.flags:
+        log.info("[ATTACK] 🕸️🚩 Web attack captured %d flag(s): %s"
+                 % (len(memory.flags), [f["flag"] for f in memory.flags]))
+    else:
+        log.info("[ATTACK] 🕸️  Web attack complete — no flag yet")
+
+
 async def run_recon(session, target, memory):
     """Scan the target for open ports and record what's found into memory."""
     log.info(f"[SCAN] Starting recon on {target}")
@@ -710,11 +876,23 @@ async def run_full_engagement(target):
     cache = NegativeCache()
     log.info(f"[ENGAGE] 💣 Full engagement started on {target}")
     async with mcp_session() as session:
+        # Domain targets get an enumeration pass first (subdomains/URLs into
+        # memory); bare IPs skip straight to the port scan.
+        if is_domain_target(target):
+            await run_web_recon(session, target, memory)
         await run_recon(session, target, memory)
         if memory.open_ports:
-            await run_attack_loop(session, target, memory, cache)
+            # Web app present → hunt the flag with the active web tools first.
+            await run_web_attack(session, target, memory)
+            # Skip the slower generic per-port loop once a flag is already bagged.
+            if memory.flags:
+                log.info("[ENGAGE] 🚩 Flag captured in web phase — skipping generic attack loop")
+            else:
+                await run_attack_loop(session, target, memory, cache)
         else:
             log.warning(f"[FAIL] 😤💀 No open ports found — aborting engagement")
+    if memory.flags:
+        log.info("🚩🚩🚩 ENGAGEMENT FLAGS: %s" % [f["flag"] for f in memory.flags])
     return memory
 
 async def run_orchestrated(target):
@@ -809,6 +987,11 @@ def main():
                 continue
             log.info(f"[GOAL] 🎯 {goal}")
             mode, target = parse_engagement_command(goal)
+            # Operator-trust mode (engagement.yaml `trust_operator: true`): the
+            # host the operator just typed becomes the authorized scope, so there
+            # is no per-target yaml edit. No-op when trust mode is off.
+            if mode in ("single", "multi"):
+                ENGAGEMENT.admit_operator_target(target)
             if mode == "multi":
                 # Same scope gate as `engage` — the refusal lands in the custody log.
                 if not ENGAGEMENT.authorize("halo", "recon", target,

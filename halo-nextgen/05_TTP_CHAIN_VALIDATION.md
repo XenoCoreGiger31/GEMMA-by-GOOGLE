@@ -24,7 +24,7 @@ question. The rocket analogy is exactly right:
 > without launching.
 
 Why it fits HALO specifically:
-- HALO already has the arsenal to *exercise* individual techniques (31 tools).
+- HALO already has the arsenal to *exercise* individual techniques (42 tools).
 - HALO already has cross-session **learning** (the negative cache) — TTP
   validation extends it into **environmental learning** (`01` C2 tier 3: "which
   control stopped which technique here").
@@ -38,7 +38,7 @@ Why it fits HALO specifically:
 
 ### The one caveat that makes it responsible, not reckless
 "Orchestrate, don't sprawl" is the right mantra — but HALO already *is* a pile of
-31 tools. The risk is adding a 32nd thing. So the design below is explicitly **an
+42 tools. The risk is adding a 43rd thing. So the design below is explicitly **an
 orchestration layer that reuses existing tools and agents**, not a new tool
 stack. It's a *loop*, not another scanner. That's the whole point of the material
 and it's the discipline we hold to.
