@@ -43,6 +43,7 @@ On error the dict also carries "error_type", "message", and usually a
 
 import os
 import shlex
+import socket
 import subprocess
 import tempfile
 
@@ -139,8 +140,14 @@ class ToolExecutor:
             # (rpcclient/smbclient) that inherit the stdout pipe; subprocess.run
             # only kills the immediate shell, so the reap blocks forever and the
             # timeout never really fires. Popen + killpg fixes the hang.
+            # stdin=DEVNULL is critical: under the stdio MCP transport this process's
+            # own stdin IS the JSON-RPC pipe, and a spawned tool inherits it. Tools
+            # that read stdin when no target is piped (httpx, dnsx, nuclei, …) then
+            # block on that pipe forever and ride the timeout to the wall with zero
+            # output. Detaching stdin makes such a read hit EOF and return at once.
             proc = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                command, shell=True, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, start_new_session=True,
             )
             try:
@@ -237,7 +244,16 @@ class ToolExecutor:
             return self._missing("No target specified for masscan")
         ports = p.get("ports", "1-65535")
         rate = p.get("rate", "1000")
-        return self._run_and_escalate(f"masscan {target} -p {ports} --rate {rate}")
+        # masscan speaks IPs only — it can't resolve a hostname and errors out on
+        # one ("unknown command-line parameter"). Resolve first so a domain target
+        # works; fall back to the original string if resolution fails.
+        scan_target = target
+        if re.search(r"[a-zA-Z]", target):
+            try:
+                scan_target = socket.gethostbyname(re.sub(r"^[a-z]+://", "", target).split("/")[0])
+            except OSError:
+                return self._missing(f"masscan needs an IP; could not resolve {target!r}")
+        return self._run_and_escalate(f"masscan {scan_target} -p {ports} --rate {rate}")
 
     def _run_nmap(self, p):
         target = p.get("target", "")
@@ -668,8 +684,11 @@ class ToolExecutor:
         command = f"nuclei -u {target}"
         if p.get("templates", ""):
             command += f" -t {p['templates']}"
-        if p.get("severity", ""):
-            command += f" -severity {p['severity']}"
+        # Default to skipping `info` templates (WAF banners, tech fingerprints):
+        # they were the bulk of the 80s+ full-library run and carry no exploit
+        # value. An explicit severity from the caller still wins.
+        severity = p.get("severity") or "low,medium,high,critical"
+        command += f" -severity {severity}"
         # Bound per-request time so a single slow endpoint can't stall a probe.
         command += " -timeout 5 -retries 1 -silent"
         # The per-request flag was NOT enough last engagement: nuclei still rode
@@ -692,7 +711,7 @@ class ToolExecutor:
         httpx_bin = os.environ.get("HALO_HTTPX_BIN", os.path.expanduser("~/go/bin/httpx"))
         command = f"{httpx_bin} -u {target}"
         flags = p.get("flags", "")
-        command += f" {flags}" if flags else " -status-code -title -tech-detect -silent"
+        command += f" {flags}" if flags else " -status-code -title -silent"
         # Per-probe timeout so a hanging port can't ride the full 60s subprocess
         # kill; last run every httpx call timed out with zero output.
         if "-timeout" not in command:
@@ -714,9 +733,121 @@ class ToolExecutor:
         domain = (p.get("domain") or p.get("target") or "").strip()
         if not domain:
             return self._missing("No domain specified for theHarvester")
-        sources = (p.get("sources") or p.get("source") or "duckduckgo,crtsh,bing").strip()
+        # `bing` was dropped as an engine in theHarvester 4.11+ and makes it exit
+        # with "Invalid source"; default to sources current builds still support.
+        sources = (p.get("sources") or p.get("source") or "duckduckgo,crtsh,otx").strip()
         limit = _clamp_int(p.get("limit", 100), lo=1, hi=1000, default=100)
         return self._execute_command(f"theHarvester -d {domain} -b {sources} -l {limit}")
+
+    def _run_dalfox(self, p):
+        """XSS scanner. Fires dalfox in single-URL mode against a target URL
+        (accepts `url` or `target`)."""
+        url = (p.get("url") or p.get("target") or "").strip()
+        if not url:
+            return self._missing("No url specified for dalfox")
+        return self._execute_command(f"dalfox url {url} --silence --no-color")
+
+    def _run_feroxbuster(self, p):
+        """Recursive web content/directory discovery (accepts `url` or `target`;
+        optional `wordlist`)."""
+        url = (p.get("url") or p.get("target") or "").strip()
+        if not url:
+            return self._missing("No url specified for feroxbuster")
+        # Content discovery needs a WEB-CONTENT list (paths/dirs), NOT the
+        # credential list; fall back to the bundled web list if seclists is absent.
+        wordlist = (p.get("wordlist") or "").strip() or DEFAULT_WEB_WORDLIST
+        if not os.path.exists(wordlist):
+            wordlist = BUNDLED_WEB_WORDLIST
+        return self._execute_command(
+            f"feroxbuster -u {url} -w {wordlist} --silent --no-state"
+        )
+
+    def _run_gowitness(self, p):
+        """Screenshot a single web target for visual recon (accepts `url` or
+        `target`)."""
+        url = (p.get("url") or p.get("target") or "").strip()
+        if not url:
+            return self._missing("No url specified for gowitness")
+        return self._execute_command(f"gowitness single {url}")
+
+    def _run_dnsx(self, p):
+        """DNS resolution/probing for a domain — A records and responses
+        (accepts `domain` or `target`)."""
+        domain = (p.get("domain") or p.get("target") or "").strip()
+        if not domain:
+            return self._missing("No domain specified for dnsx")
+        # dnsx's `-d` is bruteforce mode and REQUIRES `-w wordlist`; for plain
+        # resolution it reads hosts from stdin. Feed the host in and resolve the
+        # binary to an absolute path (the piped first token is `printf`, so
+        # _execute_command's own resolver would skip dnsx otherwise).
+        dnsx = resolve_tool("dnsx") or "dnsx"
+        return self._execute_command(f"printf '%s\\n' {domain} | {dnsx} -silent -a -resp")
+
+    def _run_gau(self, p):
+        """Fetch known URLs for a domain from AlienVault OTX, the Wayback Machine
+        and Common Crawl (accepts `domain` or `target`)."""
+        domain = (p.get("domain") or p.get("target") or "").strip()
+        if not domain:
+            return self._missing("No domain specified for gau")
+        return self._execute_command(f"gau {domain}")
+
+    def _run_waybackurls(self, p):
+        """Fetch a domain's historical URLs from the Wayback Machine (accepts
+        `domain` or `target`)."""
+        domain = (p.get("domain") or p.get("target") or "").strip()
+        if not domain:
+            return self._missing("No domain specified for waybackurls")
+        return self._execute_command(f"waybackurls {domain}")
+
+    def _run_amass(self, p):
+        """Subdomain enumeration via OWASP Amass. Defaults to passive mode to
+        stay quiet (accepts `domain` or `target`; `passive` toggles active)."""
+        domain = (p.get("domain") or p.get("target") or "").strip()
+        if not domain:
+            return self._missing("No domain specified for amass")
+        passive = p.get("passive", True)
+        mode = "-passive " if passive else ""
+        # `-nolocaldb` skips the local graph database. Without it amass tries to
+        # open/write a datastore, fails on permissions, and _execute_command then
+        # escalates to sudo — which dies with "a terminal is required". No DB, no
+        # permission error, no bogus sudo prompt.
+        return self._execute_command(f"amass enum {mode}-nolocaldb -d {domain}")
+
+    def _run_ghosttrack(self, p):
+        """GhostTrack OSINT lookup for a username, IP or phone number (accepts
+        `target`)."""
+        target = (p.get("target") or p.get("query") or "").strip()
+        if not target:
+            return self._missing("No target specified for ghosttrack")
+        return self._execute_command(f"ghosttrack {target}")
+
+    def _run_spiderfoot(self, p):
+        """Headless SpiderFoot scan of a target (domain/IP/email/etc.) across its
+        OSINT modules (accepts `target`; optional `types`)."""
+        target = (p.get("target") or p.get("domain") or "").strip()
+        if not target:
+            return self._missing("No target specified for spiderfoot")
+        types = (p.get("types") or "").strip()
+        type_flag = f" -t {types}" if types else ""
+        return self._execute_command(f"spiderfoot -s {target}{type_flag}")
+
+    def _run_recon_ng(self, p):
+        """Drive the recon-ng framework non-interactively from a resource file of
+        commands (accepts `resource` path, or `target` for a default workspace)."""
+        resource = (p.get("resource") or "").strip()
+        if resource:
+            return self._execute_command(f"recon-ng -r {resource}")
+        target = (p.get("target") or "").strip()
+        if not target:
+            return self._missing("No resource file or target specified for recon-ng")
+        return self._execute_command(f"recon-ng -w {target}")
+
+    def _run_phonextract(self, p):
+        """Phone-number OSINT/extraction lookup (accepts `phone` or `target`)."""
+        phone = (p.get("phone") or p.get("target") or "").strip()
+        if not phone:
+            return self._missing("No phone number specified for phonextract")
+        return self._execute_command(f"phonextract {phone}")
 
     # Name → bound handler. Defined after the methods exist.
     _DISPATCH = {
@@ -751,6 +882,17 @@ class ToolExecutor:
         "run_httpx": _run_httpx,
         "run_sherlock": _run_sherlock,
         "run_theharvester": _run_theharvester,
+        "run_dalfox": _run_dalfox,
+        "run_feroxbuster": _run_feroxbuster,
+        "run_gowitness": _run_gowitness,
+        "run_dnsx": _run_dnsx,
+        "run_gau": _run_gau,
+        "run_waybackurls": _run_waybackurls,
+        "run_amass": _run_amass,
+        "run_ghosttrack": _run_ghosttrack,
+        "run_spiderfoot": _run_spiderfoot,
+        "run_recon_ng": _run_recon_ng,
+        "run_phonextract": _run_phonextract,
     }
 
 
@@ -878,6 +1020,28 @@ TOOLS = [
      "inputSchema": _s("", ["target"], target=_str("URL or host."), flags=_str("Override httpx flags."))},
     {"name": "run_sherlock", "description": "Hunt a username across social networks and public sites.",
      "inputSchema": _s("", ["username"], username=_str("Username to search for."))},
+    {"name": "run_dalfox", "description": "Scan a URL for XSS (reflected, stored, DOM) with the dalfox scanner.",
+     "inputSchema": _s("", ["url"], url=_str("Target URL to test for XSS."))},
+    {"name": "run_feroxbuster", "description": "Recursively brute-force web content and directories.",
+     "inputSchema": _s("", ["url"], url=_str("Base URL."), wordlist=_str("Wordlist path override."))},
+    {"name": "run_gowitness", "description": "Capture a screenshot of a web target for visual recon.",
+     "inputSchema": _s("", ["url"], url=_str("Target URL to screenshot."))},
+    {"name": "run_dnsx", "description": "Resolve and probe DNS records (A/responses) for a domain.",
+     "inputSchema": _s("", ["domain"], domain=_str("Domain to resolve."))},
+    {"name": "run_gau", "description": "Fetch known URLs for a domain from OTX, Wayback and Common Crawl.",
+     "inputSchema": _s("", ["domain"], domain=_str("Apex domain, e.g. example.com."))},
+    {"name": "run_waybackurls", "description": "Fetch a domain's historical URLs from the Wayback Machine.",
+     "inputSchema": _s("", ["domain"], domain=_str("Apex domain, e.g. example.com."))},
+    {"name": "run_amass", "description": "Enumerate subdomains via OWASP Amass (passive by default).",
+     "inputSchema": _s("", ["domain"], domain=_str("Apex domain."), passive=_bool("Stay passive (no active resolution).", True))},
+    {"name": "run_ghosttrack", "description": "OSINT lookup for a username, IP or phone number via GhostTrack.",
+     "inputSchema": _s("", ["target"], target=_str("Username, IP, or phone number."))},
+    {"name": "run_spiderfoot", "description": "Run a headless SpiderFoot OSINT scan against a target.",
+     "inputSchema": _s("", ["target"], target=_str("Domain, IP, email, or other seed."), types=_str("Comma-separated module/type filter."))},
+    {"name": "run_recon_ng", "description": "Drive the recon-ng OSINT framework non-interactively.",
+     "inputSchema": _s("", [], resource=_str("Path to a resource file of recon-ng commands."), target=_str("Workspace name if no resource file is given."))},
+    {"name": "run_phonextract", "description": "Phone-number OSINT/extraction lookup.",
+     "inputSchema": _s("", ["phone"], phone=_str("Phone number to investigate."))},
 ]
 
 SUPPORTED_TOOLS = [t["name"] for t in TOOLS]

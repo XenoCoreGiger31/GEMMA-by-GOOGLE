@@ -6,13 +6,13 @@
 
 # 🔐 GEMMA-by-GOOGLE — HALO
 
-**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a 31-tool arsenal through recon, attack, and reporting, exposed as a standard Model Context Protocol (MCP) server. No cloud, no API keys.**
+**A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a 42-tool arsenal through recon, attack, and reporting, exposed as a standard Model Context Protocol (MCP) server. No cloud, no API keys.**
 
 [What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Contributing](CONTRIBUTING.md)
 
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Python](https://img.shields.io/badge/Python-3.10+-green)
-![Tools](https://img.shields.io/badge/Tools-31-red)
+![Tools](https://img.shields.io/badge/Tools-42-red)
 ![LM Studio](https://img.shields.io/badge/LM_Studio-Compatible-purple)
 ![Platform](https://img.shields.io/badge/Platform-Kali_Linux-blueviolet)
 ![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)
@@ -47,7 +47,7 @@ One word starts an engagement: **`engage`**.
 
 ## Tool Arsenal
 
-31 tools sit behind the agent's decision loop, all routed through the same
+42 tools sit behind the agent's decision loop, all routed through the same
 failure-caching layer. They are defined once in the `TOOLS` schema registry in
 `halo_tools.py` and served over both transports (MCP and HTTP).
 
@@ -61,8 +61,17 @@ failure-caching layer. They are defined once in the `TOOLS` schema registry in
 | `run_sherlock` | Username OSINT across 90+ platforms |
 | `run_shodan` | Internet-exposure intelligence lookups |
 | `run_phoneinfoga` | Phone-number OSINT |
+| `run_phonextract` | Phone-number OSINT / extraction |
+| `run_ghosttrack` | OSINT for username / IP / phone |
 | `run_cloudfox` | Cloud-infrastructure enumeration |
 | `run_wafw00f` | WAF / security-solution fingerprinting |
+| `run_amass` | Subdomain enumeration (passive by default) |
+| `run_dnsx` | DNS resolution and probing |
+| `run_gau` | Known URLs from OTX / Wayback / Common Crawl |
+| `run_waybackurls` | Historical URLs from the Wayback Machine |
+| `run_gowitness` | Web screenshotting for visual recon |
+| `run_spiderfoot` | Headless multi-module OSINT scanning |
+| `run_recon_ng` | recon-ng OSINT framework (non-interactive) |
 
 **Scanning**
 | Tool | Purpose |
@@ -78,6 +87,8 @@ failure-caching layer. They are defined once in the `TOOLS` schema registry in
 |------|---------|
 | `run_gobuster` | Web directory brute forcing |
 | `run_ffuf` | Web fuzzing |
+| `run_feroxbuster` | Recursive content discovery |
+| `run_dalfox` | XSS scanning (reflected / stored / DOM) |
 | `run_curl` | HTTP request testing |
 | `run_wget` | File retrieval |
 
@@ -182,7 +193,7 @@ specialist at a time, each verified against a real target before moving on:
 - **Debugger:** diagnoses failed tool runs and adjusts
 - **Validator + reporting:** findings are confirmed against real evidence before they count, then compiled into a client-readable report
 
-From there the arsenal grew to 31 tools, and the negative-experience cache turned
+From there the arsenal grew to 42 tools, and the negative-experience cache turned
 trial-and-error into persistent learning across sessions. Active development
 continues — new capabilities are pushed regularly.
 

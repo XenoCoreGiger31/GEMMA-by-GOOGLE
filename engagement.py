@@ -52,6 +52,7 @@ class EngagementContext:
     scope_targets: list[str]     # hosts and/or CIDRs the engagement may touch
     operator: str = ""
     engagement_id: str = ""
+    trust_operator: bool = False  # if True, the host typed at `engage` IS the scope
     created_at: str = field(default_factory=_now)
 
     def __post_init__(self):
@@ -60,10 +61,14 @@ class EngagementContext:
                 "Refusing to create an engagement with no written authorization. "
                 "Set `authorization` to a reference for the client's written approval."
             )
-        if not self.scope_targets:
+        # Operator-trust mode fills the scope at `engage` time from the host the
+        # operator explicitly types, so an empty pre-configured scope is allowed
+        # ONLY then. Every other mode still demands an explicit, non-empty scope.
+        if not self.scope_targets and not self.trust_operator:
             raise AuthorizationError(
                 "Refusing to create an engagement with an empty target scope. "
-                "Define exactly which hosts/CIDRs are authorized."
+                "Define exactly which hosts/CIDRs are authorized, or set "
+                "`trust_operator: true` to authorize each `engage` target as you type it."
             )
 
 
@@ -148,6 +153,23 @@ class Engagement:
         }
         self.approver = approver or (lambda action_class, target: False)
 
+    def admit_operator_target(self, target: str) -> None:
+        """Operator-trust mode: the host the operator explicitly typed at `engage`
+        becomes the authorized scope for this session — replacing any prior scope
+        so it is *exactly* that host. This trusts the human's deliberate target
+        selection while preserving drift protection: the autonomous model still
+        can't act on any host other than the one named here, because the scope is
+        precisely what was typed. No-op if trust mode is off or target is empty."""
+        if not self.ctx.trust_operator:
+            return
+        t = (target or "").strip()
+        if not t:
+            return
+        self.ctx.scope_targets = [t]
+        self.scope = ScopeGuard([t])
+        self.custody.record("operator", "recon", t, "SCOPED",
+                            "operator-trust: target admitted to scope by explicit engage")
+
     def authorize(self, actor: str, action_class: str, target: str,
                   detail: str = "") -> bool:
         """The single gate. Returns True only if: not halted, in scope, and the
@@ -202,7 +224,11 @@ _TOOL_CLASS = {
     "run_subfinder": "recon", "run_wafw00f": "recon", "run_katana": "recon",
     "run_shodan": "recon", "run_enum4linux": "recon", "read_file": "recon",
     "run_phoneinfoga": "recon", "run_cloudfox": "recon",
-    "run_theharvester": "recon",
+    "run_theharvester": "recon", "run_gowitness": "recon", "run_dnsx": "recon",
+    "run_gau": "recon", "run_waybackurls": "recon", "run_amass": "recon",
+    "run_ghosttrack": "recon", "run_spiderfoot": "recon", "run_recon_ng": "recon",
+    "run_phonextract": "recon", "run_curl": "recon", "run_wget": "recon",
+    "run_dalfox": "active_scan", "run_feroxbuster": "active_scan",
     "run_nuclei": "active_scan", "run_nikto": "active_scan",
     "run_gobuster": "active_scan", "run_ffuf": "active_scan",
     "run_searchsploit": "active_scan",
@@ -247,6 +273,7 @@ def load_engagement_context(path: str = "engagement.yaml") -> EngagementContext:
         scope_targets=raw.get("scope_targets") or [],
         operator=raw.get("operator", ""),
         engagement_id=raw.get("engagement_id", ""),
+        trust_operator=bool(raw.get("trust_operator", False)),
     )
 
 

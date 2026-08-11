@@ -73,7 +73,7 @@ On failure, `status` is `"error"` and the object also carries `error_type`,
 
 ## Tool reference
 
-All 31 tools, grouped by role. **Bold** arguments are required; the rest are
+All 42 tools, grouped by role. **Bold** arguments are required; the rest are
 optional, with their default shown in parentheses. Argument schemas are
 enforced against each tool's `inputSchema` before execution.
 

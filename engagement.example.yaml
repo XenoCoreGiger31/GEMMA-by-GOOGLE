@@ -13,3 +13,11 @@ scope_targets:
   - "10.0.0.0/24"
   - "app.client.example"
 operator: "analyst"
+
+# Operator-trust mode. When true, whatever host you type at `engage <target>`
+# is authorized as the scope for that session — no per-target edit of this file.
+# It trusts your deliberate target choice but KEEPS drift protection: the
+# autonomous agent still can't touch any host other than the one you named.
+# With this on, scope_targets above may be left empty. Use only on lab/owned
+# hosts where you are the authorizing party. Default is false (explicit scope).
+trust_operator: false

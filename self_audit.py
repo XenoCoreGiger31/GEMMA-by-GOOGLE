@@ -57,7 +57,12 @@ HALO_TOOL_BINARIES = {
     "run_searchsploit": "searchsploit", "run_curl": "curl", "run_wget": "wget",
     "run_gobuster": "gobuster", "run_ffuf": "ffuf", "run_enum4linux": "enum4linux",
     "run_setoolkit": "setoolkit", "run_subfinder": "subfinder",
-    "run_theharvester": "theHarvester",
+    "run_theharvester": "theHarvester", "run_dalfox": "dalfox",
+    "run_feroxbuster": "feroxbuster", "run_gowitness": "gowitness",
+    "run_dnsx": "dnsx", "run_gau": "gau", "run_waybackurls": "waybackurls",
+    "run_amass": "amass", "run_ghosttrack": "ghosttrack",
+    "run_spiderfoot": "spiderfoot", "run_recon_ng": "recon-ng",
+    "run_phonextract": "phonextract",
     "run_nuclei": "nuclei", "run_katana": "katana", "run_httpx": "httpx",
     "run_sherlock": "sherlock", "run_metasploit": "msfconsole",
 }
