@@ -54,7 +54,7 @@ class NegativeCache:
         os.makedirs(CACHE_DIR, exist_ok=True)
         self._cache = self._load()
         scope = "cross-session" if PERSIST else "per-engagement"
-        log.info(f"[MEMORY] 🧠 Failure cache ready ({scope}) — {len(self._cache)} entries")
+        log.info(f"[MEMORY] Failure cache ready ({scope}) — {len(self._cache)} entries")
 
     # ----------------------------------------------------------
     # Internal helpers
@@ -69,7 +69,7 @@ class NegativeCache:
                 with open(CACHE_FILE, "r") as f:
                     return json.load(f)
             except Exception:
-                log.warning("[MEMORY] 😤 Cache file corrupt — starting fresh")
+                log.warning("[MEMORY] Cache file corrupt — starting fresh")
                 return {}
         return {}
 
@@ -81,7 +81,7 @@ class NegativeCache:
             with open(CACHE_FILE, "w") as f:
                 json.dump(self._cache, f, indent=2)
         except Exception as e:
-            log.error(f"[ERROR] 😭🔥 Cache save failed: {e}")
+            log.error(f"[ERROR] Cache save failed: {e}")
 
     def _fingerprint(self, step: dict) -> str:
         """
@@ -140,22 +140,22 @@ class NegativeCache:
 
         # Tool missing — block immediately, retrying won't fix it
         if failure_type == "tool_missing":
-            log.warning(f"[MEMORY] 🚫 BLOCKED (tool not installed) → {entry['summary']}")
+            log.warning(f"[MEMORY] BLOCKED (tool not installed) → {entry['summary']}")
             return False
 
         # Permission denied — block after 1 attempt, sudo already tried
         if failure_type == "permission_denied" and attempts >= 1:
-            log.warning(f"[MEMORY] 🚫 BLOCKED (permission denied) → {entry['summary']}")
+            log.warning(f"[MEMORY] BLOCKED (permission denied) → {entry['summary']}")
             return False
 
         # Timeout — allow 3 attempts, target may be slow
         if failure_type == "timeout" and attempts >= 3:
-            log.warning(f"[MEMORY] 🚫 BLOCKED (repeated timeout) → {entry['summary']}")
+            log.warning(f"[MEMORY] BLOCKED (repeated timeout) → {entry['summary']}")
             return False
 
         # Default — block after 2 failures
         if entry.get("permanently_blocked"):
-            log.warning(f"[MEMORY] 🚫 BLOCKED (seen {attempts}x) → {entry['summary']}")
+            log.warning(f"[MEMORY] BLOCKED (seen {attempts}x) → {entry['summary']}")
             return False
 
         return True
@@ -193,11 +193,11 @@ class NegativeCache:
         if entry["attempts"] >= 2:
             entry["permanently_blocked"] = True
             log.warning(
-                f"[MEMORY] ☠️  PERMANENTLY BLOCKED after {entry['attempts']} failures → {entry['summary']}"
+                f"[MEMORY] PERMANENTLY BLOCKED after {entry['attempts']} failures → {entry['summary']}"
             )
         else:
             log.info(
-                f"[MEMORY] 📝 Failure #{entry['attempts']} recorded (1 retry left) → {entry['summary']}"
+                f"[MEMORY] Failure #{entry['attempts']} recorded (1 retry left) → {entry['summary']}"
             )
 
         self._save()
@@ -210,7 +210,7 @@ class NegativeCache:
         """
         fp = self._fingerprint(step)
         if fp in self._cache:
-            log.info(f"[MEMORY] ✅ Clearing prior failure record — tool succeeded: {self._summary(step)}")
+            log.info(f"[MEMORY] Clearing prior failure record — tool succeeded: {self._summary(step)}")
             del self._cache[fp]
             self._save()
 
@@ -227,7 +227,7 @@ class NegativeCache:
 
     def dump(self):
         """Pretty-print the full cache to the log — useful for debugging."""
-        log.info(f"[MEMORY] 🧠 Cache dump ({len(self._cache)} entries):")
+        log.info(f"[MEMORY] Cache dump ({len(self._cache)} entries):")
         for fp, entry in self._cache.items():
-            status = "☠️  BLOCKED" if entry["permanently_blocked"] else f"⚠️  {entry['attempts']} attempt(s)"
+            status ="BLOCKED"if entry["permanently_blocked"] else f"{entry['attempts']} attempt(s)"
             log.info(f"  [{fp}] {status} → {entry['summary']}")

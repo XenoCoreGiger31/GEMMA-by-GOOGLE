@@ -4,7 +4,7 @@ Unit tests for agent_loop.parse_engagement_command().
 Regression cover for the `engage multi <target>` routing bug: a space-separated
 "multi" was not matched by the `engage-multi ` (hyphen) branch, fell through to
 the single-agent `engage ` branch, and produced target="multi <ip>" — which the
-scope gate then refused ("🚫 multi 203.0.113.3 refused at engagement start").
+scope gate then refused ("multi 203.0.113.3 refused at engagement start").
 
 Standard library only. HALO_LOG_DIR is redirected to a temp dir before importing
 agent_loop so module import side effects don't touch a real log path.

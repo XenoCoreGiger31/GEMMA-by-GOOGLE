@@ -365,7 +365,7 @@ def call_model(goal):
     try:
         response = requests.post(MODEL_URL, json=payload, timeout=MODEL_TIMEOUT)
         raw = response.json()["choices"][0]["message"]["content"]
-        log.info(f"[MODEL] Response received ✅👍")
+        log.info(f"[MODEL] Response received")
         return parse_model_response(raw)
     except Exception as e:
         log.error(f"[ERROR] Model call failed: {e}")
@@ -556,7 +556,7 @@ async def _run_exploit_gated(session, step):
     try:
         r = await _call_tool(session, test_step)
     except Exception as e:
-        log.error(f"[ERROR] 😭🔥 exploit test phase exception: {e}")
+        log.error(f"[ERROR] exploit test phase exception: {e}")
         return "", False
     test_out = r.get("stdout", "")
     print("\n--- TEST PHASE OUTPUT (isolated, no network) ---")
@@ -581,7 +581,7 @@ async def _run_exploit_gated(session, step):
     try:
         r = await _call_tool(session, attack_step)
     except Exception as e:
-        log.error(f"[ERROR] 😭🔥 exploit attack phase exception: {e}")
+        log.error(f"[ERROR] exploit attack phase exception: {e}")
         return "", False
     out = r.get("stdout", "")
     err = r.get("stderr", "")
@@ -638,7 +638,7 @@ async def execute_step(session, step):
     target = step.get("target", "")
     action_class = classify(tool)
     if ENGAGEMENT is None:
-        log.warning(f"[GATE] 🚫 {tool} on {target!r} — no engagement configured")
+        log.warning(f"[GATE] {tool} on {target!r} — no engagement configured")
         return "", False
     # Normalize the target used for the SCOPE check only (the real call still
     # gets the original target). Strip a trailing :port so "203.0.113.3:80"
@@ -655,7 +655,7 @@ async def execute_step(session, step):
         scope_target = ENGAGEMENT.ctx.scope_targets[0]
     if not ENGAGEMENT.authorize("halo", action_class, scope_target):
         reason = _deny_reason(ENGAGEMENT, action_class, scope_target)
-        log.warning(f"[GATE] 🚫 {tool} on {target!r} — {reason}")
+        log.warning(f"[GATE] {tool} on {target!r} — {reason}")
         return "", False
     if tool == "run_exploit":
         return await _run_exploit_gated(session, step)
@@ -667,14 +667,14 @@ async def execute_step(session, step):
         status = result_data.get("status", "")
         duration = (datetime.now() - start_time).seconds
         if status == "success":
-            log.info(f"[TOOL] ✅👍 {tool} completed in {duration}s")
+            log.info(f"[TOOL] {tool} completed in {duration}s")
             if output:
                 log.info(f"[TOOL] Output preview: {output[:200]}")
         else:
-            log.warning(f"[FAIL] 😤💀 {tool} failed after {duration}s → {result_data.get('message', 'unknown error')}")
+            log.warning(f"[FAIL] {tool} failed after {duration}s → {result_data.get('message','unknown error')}")
         return output, status == "success"
     except Exception as e:
-        log.error(f"[ERROR] 😭🔥 {tool} exception: {e}")
+        log.error(f"[ERROR] {tool} exception: {e}")
         return "", False
 
 # Passive/fast domain-enumeration tools, run in order BEFORE the port scan when
@@ -695,14 +695,14 @@ async def run_web_recon(session, target, memory):
     memory. Best-effort: a missing or failing tool is skipped, never fatal —
     the port-scan recon still runs after this returns."""
     apex = _apex_of(target)
-    log.info(f"[RECON] 🌐 Web recon on {apex} — subdomains, hosts, URLs")
+    log.info(f"[RECON] Web recon on {apex} — subdomains, hosts, URLs")
     for tool in WEB_RECON_TOOLS:
         output, _ok = await execute_step(session, {"tool": tool, "domain": apex, "target": apex})
         if not output:
             continue
         memory.add_subdomains(extract_subdomains(output, apex))
         memory.add_urls(extract_urls(output))
-    log.info(f"[RECON] 🌐 Web recon complete — "
+    log.info(f"[RECON] Web recon complete — "
              f"{len(memory.subdomains)} subdomain(s), {len(memory.urls)} URL(s)")
 
 
@@ -727,7 +727,7 @@ async def run_web_attack(session, target, memory):
     host = _apex_of(target)
     scheme = "https" if "443" in memory.open_ports else "http"
     base = f"{scheme}://{host}"
-    log.info(f"[ATTACK] 🕸️  Web attack on {base} — content discovery, flag hunt, templates, XSS")
+    log.info(f"[ATTACK] Web attack on {base} — content discovery, flag hunt, templates, XSS")
 
     async def fire(step):
         out, _ok = await execute_step(session, step)
@@ -752,10 +752,10 @@ async def run_web_attack(session, target, memory):
         await fire({"tool": "run_dalfox", "url": base, "target": host})
 
     if memory.flags:
-        log.info("[ATTACK] 🕸️🚩 Web attack captured %d flag(s): %s"
+        log.info("[ATTACK] 🚩 Web attack captured %d flag(s): %s"
                  % (len(memory.flags), [f["flag"] for f in memory.flags]))
     else:
-        log.info("[ATTACK] 🕸️  Web attack complete — no flag yet")
+        log.info("[ATTACK] Web attack complete — no flag yet")
 
 
 async def run_recon(session, target, memory):
@@ -769,9 +769,9 @@ async def run_recon(session, target, memory):
             ports = extract_ports(output)
             if ports:
                 memory.add_ports(ports)
-                log.info(f"[SCAN] 🎉😄 Found {len(ports)} open ports: {ports}")
+                log.info(f"[SCAN] Found {len(ports)} open ports: {ports}")
             else:
-                log.warning(f"[SCAN] 😤💀 No ports found in output")
+                log.warning(f"[SCAN] No ports found in output")
             # Capture real product/version from `nmap -sV` so selection is no longer
             # version-blind (additive; port extraction above is unchanged).
             memory.add_fingerprints(extract_fingerprints(output))
@@ -792,7 +792,7 @@ async def run_attack_loop(session, target, memory, cache=None):
     registry = ChallengeRegistry()
     while memory.has_untried_ports():
         port = memory.next_untried_port()
-        log.info(f"[ATTACK] ⚔️  Targeting port {port}")
+        log.info(f"[ATTACK] Targeting port {port}")
         service = memory.service_hint(port)
         goal = (f"Target: {target}  Port: {port}  Service: {service}. "
                 f"Ports already tried (do not target again): {memory.failed_attacks}.\n"
@@ -803,7 +803,7 @@ async def run_attack_loop(session, target, memory, cache=None):
         # a Metasploit module chosen from the REAL fingerprint, else the model's chain.
         chain = plan_exploit_step(port, target, service, chain, memory)
         if not chain:
-            log.warning(f"[FAIL] 😤💀 No attack chain generated for port {port}")
+            log.warning(f"[FAIL] No attack chain generated for port {port}")
             memory.mark_tried(port, success=False)
             continue
         success = False
@@ -811,11 +811,11 @@ async def run_attack_loop(session, target, memory, cache=None):
             tool = step.get("tool")
             # ── Port↔tool fit gate (deterministic, model-independent) ──
             if not tool_fits_port(tool, port):
-                log.info(f"[STEER] 🔧 {tool} is wrong for port {port} ({service}) — skipping, not attempting")
+                log.info(f"[STEER] {tool} is wrong for port {port} ({service}) — skipping, not attempting")
                 continue
             # ── Negative cache gate ──────────────────────────────
             if cache and not cache.should_attempt(step):
-                log.info(f"[MEMORY] 🚫 Already failed this engagement — skipping: {tool}")
+                log.info(f"[MEMORY] Already failed this engagement — skipping: {tool}")
                 continue
             # ────────────────────────────────────────────────────
             # Per-run verification token for sandboxed exploits: mint it here and
@@ -840,7 +840,7 @@ async def run_attack_loop(session, target, memory, cache=None):
                                 registry=registry, target=target):
                 success = True
                 if tool == "run_exploit":
-                    log.info(f"[BREACH] ✅ nonce={nonce} payload_hash={ch.payload_hash} "
+                    log.info(f"[BREACH] nonce={nonce} payload_hash={ch.payload_hash}"
                              f"— breach bound to this exact payload")
                 if cache:
                     cache.record_success(step)
@@ -862,9 +862,9 @@ async def run_attack_loop(session, target, memory, cache=None):
     summary = memory.summary()
     log.info(f"[MEMORY] Final summary: {summary}")
     if memory.successful_attacks:
-        log.info(f"[SUCCESS] 🎉😄 BREACHED ports: {memory.successful_attacks}")
+        log.info(f"[SUCCESS] BREACHED ports: {memory.successful_attacks}")
     else:
-        log.warning(f"[FAIL] 😤💀 No successful breaches this session")
+        log.warning(f"[FAIL] No successful breaches this session")
 
 async def run_full_engagement(target):
     """Run recon then, if any ports opened, the attack loop; return the memory.
@@ -874,7 +874,7 @@ async def run_full_engagement(target):
     """
     memory = AgentMemory()
     cache = NegativeCache()
-    log.info(f"[ENGAGE] 💣 Full engagement started on {target}")
+    log.info(f"[ENGAGE] Full engagement started on {target}")
     async with mcp_session() as session:
         # Domain targets get an enumeration pass first (subdomains/URLs into
         # memory); bare IPs skip straight to the port scan.
@@ -890,7 +890,7 @@ async def run_full_engagement(target):
             else:
                 await run_attack_loop(session, target, memory, cache)
         else:
-            log.warning(f"[FAIL] 😤💀 No open ports found — aborting engagement")
+            log.warning(f"[FAIL] No open ports found — aborting engagement")
     if memory.flags:
         log.info("🚩🚩🚩 ENGAGEMENT FLAGS: %s" % [f["flag"] for f in memory.flags])
     return memory
@@ -907,7 +907,7 @@ async def run_orchestrated(target):
     session for the whole engagement, exactly like run_full_engagement.
     """
     memory = AgentMemory()
-    log.info(f"[ENGAGE] 🤖 Orchestrated (multi-agent) engagement started on {target}")
+    log.info(f"[ENGAGE] Orchestrated (multi-agent) engagement started on {target}")
     async with mcp_session() as session:
         result = await run_orchestrated_engagement(
             session, target, memory,
@@ -917,7 +917,7 @@ async def run_orchestrated(target):
     report_path = f"{LOG_DIR}/{SESSION_ID}_orchestrated_report.md"
     with open(report_path, "w") as f:
         f.write(result["report"])
-    log.info(f"[REPORT] 📝 Orchestrated report written to {report_path}")
+    log.info(f"[REPORT] Orchestrated report written to {report_path}")
     return result
 
 async def execute_chain(chain, cache=None):
@@ -927,9 +927,9 @@ async def execute_chain(chain, cache=None):
     """
     async with mcp_session() as session:
         for i, step in enumerate(chain, 1):
-            log.info(f"[CHAIN] 🔗 Step {i} of {len(chain)}: {step.get('tool')}")
+            log.info(f"[CHAIN] Step {i} of {len(chain)}: {step.get('tool')}")
             if cache and not cache.should_attempt(step):
-                log.warning(f"[MEMORY] 🚫 Skipping permanently blocked step: {step.get('tool')}")
+                log.warning(f"[MEMORY] Skipping permanently blocked step: {step.get('tool')}")
                 continue
             output, ok = await execute_step(session, step)
             if not ok and cache:
@@ -958,9 +958,9 @@ def main():
     SYSTEM_PROMPT = build_engagement_system_prompt(ctx) + "\n\n" + TOOL_INSTRUCTIONS
     log.info(f"[ENGAGEMENT] Authorized for scope: {ctx.scope_targets}")
 
-    log.info("[START] 🚀 AUTONOMOUS SECURITY AGENT ONLINE")
+    log.info("[START] AUTONOMOUS SECURITY AGENT ONLINE")
     print("=" * 60)
-    print("⚔️   AUTONOMOUS SECURITY AGENT")
+    print("AUTONOMOUS SECURITY AGENT")
     print("=" * 60)
     print("Commands:")
     print("  engage <target>       - full recon + attack loop (single-agent)")
@@ -968,24 +968,24 @@ def main():
     print("  killswitch       - halt all further authorized action")
     print("  <any goal>       - single model query")
     print("  exit             - quit")
-    print(f"  📝 Session log: {LOG_FILE}")
-    print(f"  🔒 Authorized scope: {ctx.scope_targets}")
+    print(f"Session log: {LOG_FILE}")
+    print(f"Authorized scope: {ctx.scope_targets}")
     print("=" * 60)
 
     while True:
         try:
             goal = input(">>> ").strip()
             if goal.lower() == "exit":
-                log.info("[START] Agent shutdown. Goodbye! 👋")
+                log.info("[START] Agent shutdown. Goodbye!")
                 _export_custody_log()
                 break
             if goal.lower() == "killswitch":
                 ENGAGEMENT.kill.halt("operator")
-                log.warning("[ENGAGEMENT] 🛑 Kill switch engaged — all further action blocked")
+                log.warning("[ENGAGEMENT] Kill switch engaged — all further action blocked")
                 continue
             if not goal:
                 continue
-            log.info(f"[GOAL] 🎯 {goal}")
+            log.info(f"[GOAL] {goal}")
             mode, target = parse_engagement_command(goal)
             # Operator-trust mode (engagement.yaml `trust_operator: true`): the
             # host the operator just typed becomes the authorized scope, so there
@@ -996,11 +996,11 @@ def main():
                 # Same scope gate as `engage` — the refusal lands in the custody log.
                 if not ENGAGEMENT.authorize("halo", "recon", target,
                                             detail="orchestrated engagement start"):
-                    log.warning(f"[ENGAGEMENT] 🚫 {target} refused at engagement start")
+                    log.warning(f"[ENGAGEMENT] {target} refused at engagement start")
                     print(f"[ENGAGEMENT] {target} is out of authorized scope {ctx.scope_targets}. Refusing.")
                     continue
                 result = asyncio.run(run_orchestrated(target))
-                log.info(f"[REPORT] 📝 Orchestrated engagement complete — "
+                log.info(f"[REPORT] Orchestrated engagement complete —"
                          f"{len(result['memory'].successful_attacks)} port(s) breached")
             elif mode == "single":
                 # Routed through authorize() (not a bare scope.in_scope() check)
@@ -1008,20 +1008,20 @@ def main():
                 # the chain-of-custody log.
                 if not ENGAGEMENT.authorize("halo", "recon", target,
                                             detail="engagement start"):
-                    log.warning(f"[ENGAGEMENT] 🚫 {target} refused at engagement start")
+                    log.warning(f"[ENGAGEMENT] {target} refused at engagement start")
                     print(f"[ENGAGEMENT] {target} is out of authorized scope {ctx.scope_targets}. Refusing.")
                     continue
                 # asyncio.run() drives the async engagement (which spawns and
                 # owns the MCP server subprocess) to completion, then returns.
                 memory = asyncio.run(run_full_engagement(target))
-                log.info(f"[REPORT] 📝 Engagement complete — run report generator for client memo")
+                log.info(f"[REPORT] Engagement complete — run report generator for client memo")
             else:
                 data = call_model(goal)
                 chain = data.get("chain", [])
                 if chain:
                     asyncio.run(execute_chain(chain, cache=cache))
                 else:
-                    log.warning("[FAIL] 😤💀 No tool chain generated")
+                    log.warning("[FAIL] No tool chain generated")
         except KeyboardInterrupt:
             log.info("[START] Interrupted by user")
             _export_custody_log()
@@ -1030,7 +1030,7 @@ def main():
             subprocess.run(["python3", report_script, LOG_FILE])
             break
         except Exception as e:
-            log.error(f"[ERROR] 😭🔥 Fatal error: {e}")
+            log.error(f"[ERROR] Fatal error: {e}")
             _export_custody_log()
             break
 
