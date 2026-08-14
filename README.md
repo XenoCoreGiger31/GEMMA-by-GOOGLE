@@ -8,7 +8,7 @@
 
 **A fully local, autonomous AI penetration-testing agent — Gemma 4-12B driving a 42-tool arsenal through recon, attack, and reporting, exposed as a standard Model Context Protocol (MCP) server. No cloud, no API keys.**
 
-[What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Contributing](CONTRIBUTING.md)
+[What It Does](#what-it-does) · [Tools](#tool-arsenal) · [Architecture](#architecture) · [Stack](#stack) · [Quickstart](docs/QUICKSTART.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Python](https://img.shields.io/badge/Python-3.10+-green)
@@ -36,6 +36,16 @@ One word starts an engagement: **`engage`**.
 
 - 🔍 **Autonomous recon** — masscan + nmap to discover open ports and services
 - ⚔️ **Autonomous attack loop** — selects and chains tools based on what it finds
+- 🌐 **Web recon → attack pipeline** — apex-to-URL enumeration (subdomains,
+  hosts, historical URLs), content discovery, template scanning and XSS, with
+  automatic **flag capture** on CTF-style web targets
+- ✅ **Verified breaches, not banners** — every attempt carries a single-use
+  challenge/nonce the exploit must echo *from inside the popped shell*; a bare
+  `uid=0` banner or a tarpit can't forge it, so a confirmed breach is a real one
+  (execution-derived evidence, consume-once at the gate)
+- 🎯 **Curated PoC library** — deterministic, self-evident exploits
+  (vsftpd 2.3.4, ingreslock, UnrealIRCd) fired through a sandboxed delivery
+  primitive that returns a real shell, not a guess
 - 🧠 **Persistent negative-experience cache** — learns what fails across *all*
   sessions and stops wasting cycles on proven dead ends
 - 🧩 **Adaptive skill injection** — loads relevant attack playbooks into the
@@ -127,7 +137,7 @@ thin transports sit on top of it, so the tools are defined exactly once:
 ```
    agent_loop.py ──HTTP─►  tool_server.py ─┐
                                             ├─►  halo_tools.py  ──►  security tools
-   MCP clients  ──stdio►  mcp_server.py  ──┘   (29-tool engine +
+   MCP clients  ──stdio►  mcp_server.py  ──┘   (42-tool engine +
                                                  schema registry)
      │
      ├─►  agent_cache.py         (persistent negative-experience cache)
@@ -177,6 +187,26 @@ trial-and-error learning — building context, avoiding repeated dead ends, and
 escalating intelligently — rather than re-running what it has already proven
 doesn't work.
 
+### Verified breaches, not vibes
+
+The hard problem with an autonomous attacker is knowing whether it *actually*
+broke in or just parroted a hopeful banner. HALO answers this with a
+challenge-response gate:
+
+- The orchestrator **mints a per-attempt nonce**, bound to that target and the
+  exact payload hash, before firing.
+- A breach only counts if the tool output carries a structured
+  `HALO-EVIDENCE nonce=… level=…` line echoing **that** nonce — which the
+  delivery primitive (`pocs/_delivery.py`) can only produce by running code
+  *inside* the shell it claims to have.
+- The nonce is **consume-once**: the gate (`exploitation_core.py:breach_confirmed`)
+  rejects a replayed or never-minted nonce, so a tarpit, a reflected string, or a
+  static `uid=0` banner cannot forge a confirmation.
+
+The curated PoCs in [`pocs/`](pocs/) are deterministic, self-evident bugs
+(vsftpd 2.3.4, ingreslock 1524, UnrealIRCd 3.2.8.1) that pass this gate honestly —
+they land a real root shell or they report nothing.
+
 ---
 
 ## How It Was Built
@@ -193,9 +223,11 @@ specialist at a time, each verified against a real target before moving on:
 - **Debugger:** diagnoses failed tool runs and adjusts
 - **Validator + reporting:** findings are confirmed against real evidence before they count, then compiled into a client-readable report
 
-From there the arsenal grew to 42 tools, and the negative-experience cache turned
-trial-and-error into persistent learning across sessions. Active development
-continues — new capabilities are pushed regularly.
+From there the arsenal grew to 42 tools, a full web recon → attack pipeline with
+flag capture, and challenge-response breach confirmation, while the
+negative-experience cache turned trial-and-error into persistent learning across
+sessions. Active development continues — new capabilities are pushed regularly;
+see the [changelog](CHANGELOG.md) for the shipped milestones.
 
 ---
 
