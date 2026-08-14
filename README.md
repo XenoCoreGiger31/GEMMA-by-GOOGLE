@@ -1,8 +1,7 @@
 <img width="1021" height="720" alt="HALO banner" src="https://github.com/user-attachments/assets/90e5df6a-487a-45f7-b42b-35b1948a3519" />
 
-<!-- HERO VIDEO — drag HALO_demo_1min_web.mp4 onto THIS line in the GitHub README editor.
-     GitHub uploads it and replaces this comment with a user-attachments/assets URL that
-     renders as an inline player. Then delete this comment. Old cover image removed here. -->
+
+https://github.com/user-attachments/assets/ba467fae-a4c9-4f63-b2e6-3fc30fb023f3
 
 <div align="center">
 
