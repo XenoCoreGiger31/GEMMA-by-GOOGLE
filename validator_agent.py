@@ -13,7 +13,7 @@ Vuln Discovery -> Attacker -> Validator -> report.
 """
 
 from agent_schema import AgentMessage, AgentName, TaskStatus
-from exploitation_core import breach_confirmed
+from exploitation_core import breach_confirmed, has_structured_evidence
 
 
 def validate_finding(attacker_result: dict, target: str) -> dict:
@@ -32,7 +32,15 @@ def validate_finding(attacker_result: dict, target: str) -> dict:
               or "")
     ok = attacker_result.get("ok", True)
 
-    confirmed = breach_confirmed(tool, output, ok)
+    # A curated run_exploit PoC proves its breach through the nonce-bound HALO-EVIDENCE
+    # line, whose single-use nonce the attacker has already consumed authoritatively.
+    # The validator therefore confirms run_exploit on EITHER that structured artifact
+    # or a raw shell banner (breach_confirmed's legacy path) — otherwise a real pop is
+    # reported unconfirmed. All other tools re-run the full evidence check unchanged.
+    if tool == "run_exploit" and ok and has_structured_evidence(output):
+        confirmed = True
+    else:
+        confirmed = breach_confirmed(tool, output, ok)
 
     return {
         "tool_used": tool,

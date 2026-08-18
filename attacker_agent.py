@@ -10,9 +10,14 @@ never performs its own reconnaissance: the scan/exploit split is
 deliberate, so Attacker exploits reported findings and nothing else.
 """
 
+import logging
+
 from agent_schema import AgentMessage, AgentName, TaskStatus
 from mcp_client import call_tool
 from exploitation_core import plan_exploit_step, breach_confirmed, tool_fits_port
+from pocs._delivery import ChallengeRegistry, payload_fingerprint
+
+log = logging.getLogger("agent")
 
 
 def run_attacker(task: dict, engagement_id: str, target: str, context: str = "") -> AgentMessage:
@@ -90,22 +95,48 @@ async def run_attacker_gated(session, port, target, service, memory,
     The result carries tool_used/attempts/ok so validator_agent.validate_finding can
     independently re-confirm the same verdict via breach_confirmed.
     """
-    goal = (f"Target: {target}  Port: {port}  Service: {service}. "
-            f"Select and run the best exploit for this service.")
-    data = model_fn(goal) or {}
-    chain = data.get("chain", [])
-    chain = plan_exploit_step(port, target, service, chain, memory, select_fn)
+    # Deterministic selection first: a curated PoC OR a fingerprint-matched Metasploit
+    # module needs no model chain and would discard one anyway. Try plan_exploit_step
+    # with an EMPTY chain — if it lands a deterministic step, skip the ~100s authoring
+    # call entirely (the waste that made every curated/msf port on the session_20260818
+    # run pay a full model call it never used). Only the genuinely-unknown surface — no
+    # curated PoC, no msf module — spends a model call to author its own chain.
+    chain = plan_exploit_step(port, target, service, [], memory, select_fn)
+    if chain:
+        log.info(f"[ATTACK] deterministic exploit selected for port {port} — no model authoring call")
+    else:
+        goal = (f"Target: {target}  Port: {port}  Service: {service}. "
+                f"Select and run the best exploit for this service.")
+        data = model_fn(goal) or {}
+        chain = plan_exploit_step(port, target, service, data.get("chain", []), memory, select_fn)
 
     last_tool, last_output, last_ok = "", "", False
     breached = False
+
+    # One challenge registry per attacker call: a curated run_exploit PoC proves its
+    # breach ONLY through a HALO-EVIDENCE line echoing a nonce we mint here (the
+    # reflection/tarpit-proof hardening). Without minting + injecting that nonce and
+    # passing the registry to breach_confirmed, a real pop cannot be confirmed — the
+    # gap that made a live engage-loop run report "Nothing worked on port 21" after
+    # correctly selecting vsftpd 2.3.4. Mirrors run_attack_loop's run_exploit handling.
+    registry = ChallengeRegistry()
 
     for step in chain:
         tool = step.get("tool", "")
         if not tool_fits_port(tool, port):
             continue
+        nonce = ""
+        if tool == "run_exploit":
+            ch = registry.mint(target, attempt_id=f"{port}:{tool}",
+                               channel="run_exploit",
+                               payload_hash=payload_fingerprint(step.get("code", "")),
+                               ttl=0)
+            nonce = ch.nonce
+            step["nonce"] = nonce
         output, ok = await execute_fn(session, step)
         last_tool, last_output, last_ok = tool, output, ok
-        if breach_confirmed(tool, output, ok):
+        if breach_confirmed(tool, output, ok, nonce=nonce,
+                            registry=registry, target=target):
             breached = True
             break
 
