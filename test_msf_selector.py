@@ -183,3 +183,27 @@ def test_parse_strips_ansi_from_module_name():
 def test_select_returns_clean_loadable_module_from_ansi_output():
     got = select_modules("samba", "3.x", runner=lambda t: SEARCH_ANSI)
     assert got and got[0]["module"] == "exploit/linux/samba/is_known_pipename"
+
+
+# Live bug (2026-08-18, deddy): `search Samba smbd 3.0.20` -> 0 results, because msf
+# ANDs every term and 'smbd'/version match no module metadata (`search samba` -> 19).
+# select_modules must fall back from the full fingerprint to the broad product token.
+SEARCH_SAMBA = """\
+
+Matching Modules
+================
+
+   #  Name                              Disclosure Date  Rank       Check  Description
+   -  ----                              ---------------  ----       -----  -----------
+   0  exploit/multi/samba/usermap_script  2007-05-14     excellent  No     Samba "username map script" Command Execution
+   1  auxiliary/scanner/smb/smb_version                  normal     No     SMB Version Detection
+"""
+
+
+def test_select_falls_back_to_broad_product_token_when_full_terms_are_empty():
+    def runner(terms):
+        # Real msf behaviour: only the broad single token returns rows.
+        return SEARCH_SAMBA if terms.strip().lower() == "samba" else "\n[-] No results from search\n"
+    got = select_modules("Samba smbd", "3.0.20", runner=runner)
+    assert got, "must fall back to the broad product token instead of returning nothing"
+    assert got[0]["module"] == "exploit/multi/samba/usermap_script"

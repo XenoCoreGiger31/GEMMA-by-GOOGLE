@@ -31,6 +31,21 @@ class FakeExecutor:
         return self._output, self._ok
 
 
+class NonceEchoExecutor:
+    """Gated-executor stand-in that proves a breach the way the REAL hardened curated
+    PoC does — only through a HALO-EVIDENCE line echoing the single-use nonce the gated
+    attacker mints and injects. Confirms iff that nonce plumbing works end to end."""
+    def __init__(self):
+        self.calls = []
+
+    async def __call__(self, session, step):
+        self.calls.append(step)
+        nonce = step.get("nonce", "")
+        if nonce:
+            return f"HALO-EVIDENCE nonce={nonce} level=exec", True
+        return "backdoor opened but no nonce to prove it", True
+
+
 def _model(chain):
     def _fn(goal):
         return {"chain": list(chain)}
@@ -53,7 +68,7 @@ def _recon_with_ports(ports, fingerprints=None):
 
 
 def test_confirmed_breach_flows_recon_attack_validate_report():
-    ex = FakeExecutor(output="uid=0(root) gid=0(root)", ok=True)
+    ex = NonceEchoExecutor()
     memory = AgentMemory()
     out = asyncio.run(run_orchestrated_engagement(
         session=None, target="10.0.0.5", memory=memory,

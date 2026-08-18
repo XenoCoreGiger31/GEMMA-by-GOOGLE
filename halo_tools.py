@@ -508,7 +508,12 @@ class ToolExecutor:
             v = _MSF_HOST_RE.sub("", v.strip())
             if k and v:
                 cmds.append(f"set {k} {v}")
-        cmds += ["run", "exit"]
+        # Fire as a backgrounded job (-j) without entering the session (-z), then run
+        # `id` across any opened sessions to emit uid-proof breach_confirmed can read,
+        # then quit. Bare `run` drops msfconsole INTO the shell on a successful pop, so
+        # the batch `-x` call hangs at the session prompt until the timeout kills it and
+        # the session is lost (observed live 2026-08-18). `exploit -j -z` never blocks.
+        cmds += ["exploit -j -z", "sleep 5", "sessions -C id", "exit"]
         resource = "; ".join(cmds)
         msf_timeout = int(os.environ.get("HALO_MSF_TIMEOUT", "180"))
         return self._execute_command(f'msfconsole -q -n -x "{resource}"', timeout=msf_timeout)

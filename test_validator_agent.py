@@ -39,6 +39,26 @@ def test_real_root_shell_under_attempts_field_confirmed():
     assert v["confirmed"] is True
 
 
+def test_nonce_evidence_line_confirms_run_exploit():
+    # The hardened curated PoCs prove a breach through the structured, nonce-bound
+    # HALO-EVIDENCE line (pocs/_delivery), NOT a raw uid=0 banner. The attacker's
+    # single-use nonce is already spent by the time the validator runs, so the
+    # validator confirms on the structured artifact + the attacker's ok. Without this
+    # a real run_exploit pop was reported "unconfirmed" (0 confirmed findings) even
+    # though the attacker popped root — the report half of the 2026-08-17 gap.
+    out = "HALO-EVIDENCE nonce=abc123 level=exec"
+    v = validate_finding({"tool_used": "run_exploit", "attempts": out, "ok": True},
+                         "203.0.113.3")
+    assert v["confirmed"] is True
+
+
+def test_run_exploit_without_any_evidence_not_confirmed():
+    v = validate_finding({"tool_used": "run_exploit",
+                          "attempts": "backdoor opened but nothing proven", "ok": True},
+                         "203.0.113.3")
+    assert v["confirmed"] is False
+
+
 def test_run_validator_status_maps_to_confirmation():
     task = {"task_id": "task_005"}
     confirmed = run_validator(task, "eng1", "203.0.113.3",

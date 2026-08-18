@@ -45,7 +45,10 @@ def test_curated_port_routes_through_gated_executor():
 
 
 def test_real_evidence_confirms_breach():
-    ex = FakeExecutor(output="uid=0(root) gid=0(root)", ok=True)
+    # The hardened curated PoC proves the pop through the nonce-bound HALO-EVIDENCE
+    # line, not a raw uid=0 banner (which, post-nonce-hardening, no longer confirms a
+    # run_exploit on its own — the single-agent path enforces the same).
+    ex = NonceEchoExecutor()
     msg = asyncio.run(run_attacker_gated(
         session=None, port="21", target="10.0.0.5", service="vsftpd 2.3.4",
         memory=AgentMemory(), execute_fn=ex, model_fn=_model([]),
@@ -53,7 +56,38 @@ def test_real_evidence_confirms_breach():
     assert msg.status == TaskStatus.SUCCESS
     assert msg.result["breached"] is True
     assert msg.result["tool_used"] == "run_exploit"
-    assert "uid=0(root)" in msg.result["attempts"]
+    assert "HALO-EVIDENCE" in msg.result["attempts"]
+
+
+class NonceEchoExecutor:
+    """Behaves like the REAL hardened curated PoC: it proves a breach ONLY through the
+    nonce-bound HALO-EVIDENCE line (pocs/_delivery), never a raw uid=0 banner. So it
+    confirms iff run_attacker_gated actually minted a challenge nonce and injected it
+    into the run_exploit step — exactly what the single-agent run_attack_loop does.
+    This is the shape the live 2026-08-17 engage-loop run failed on: it picked port 21
+    / vsftpd 2.3.4 correctly but the gated attacker never nonced the step, so the pop
+    could not be confirmed ('Nothing worked on port 21')."""
+    def __init__(self):
+        self.calls = []
+
+    async def __call__(self, session, step):
+        self.calls.append(step)
+        nonce = step.get("nonce", "")
+        if nonce:
+            return f"HALO-EVIDENCE nonce={nonce} level=exec", True
+        return "backdoor opened, but no HALO_NONCE was provided to prove it", True
+
+
+def test_curated_run_exploit_confirmed_via_nonce_evidence():
+    ex = NonceEchoExecutor()
+    msg = asyncio.run(run_attacker_gated(
+        session=None, port="21", target="10.0.0.5", service="vsftpd 2.3.4",
+        memory=AgentMemory(), execute_fn=ex, model_fn=_model([]),
+    ))
+    assert msg.status == TaskStatus.SUCCESS
+    assert msg.result["breached"] is True
+    # a nonce was actually minted and injected into the executed run_exploit step
+    assert ex.calls[0].get("nonce"), "run_attacker_gated must mint+inject a challenge nonce"
 
 
 def test_no_evidence_does_not_confirm():
@@ -79,11 +113,13 @@ def test_fit_gate_skips_wrong_tool():
 
 
 def test_attacker_result_feeds_validator_consistently():
-    ex_hit = FakeExecutor(output="uid=0(root) gid=0(root)", ok=True)
+    ex_hit = NonceEchoExecutor()
     hit = asyncio.run(run_attacker_gated(
         session=None, port="21", target="10.0.0.5", service="vsftpd 2.3.4",
         memory=AgentMemory(), execute_fn=ex_hit, model_fn=_model([]),
     ))
+    # attacker confirmed via the single-use nonce; validator re-confirms the same pop
+    # via the structured HALO-EVIDENCE artifact (the nonce is already consumed).
     assert validate_finding(hit.result, "10.0.0.5")["confirmed"] is True
 
     ex_miss = FakeExecutor(output="[info] banner", ok=True)

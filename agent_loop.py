@@ -37,9 +37,10 @@ except Exception as _skills_err:  # noqa: BLE001 — skills are optional guidanc
 import re
 import ipaddress
 import os
+import time
 from datetime import datetime
 from agent_cache import NegativeCache
-from halo_config import MODEL_URL, MODEL_NAME, TOOL_TIMEOUT, MODEL_TIMEOUT
+from halo_config import MODEL_URL, MODEL_NAME, TOOL_TIMEOUT, MODEL_TIMEOUT, MODEL_MAX_TOKENS
 from halo_logging import setup_logger
 
 # Official MCP client SDK — same `mcp` package the server (mcp_server.py) uses,
@@ -61,6 +62,8 @@ from pocs._delivery import make_nonce, ChallengeRegistry, payload_fingerprint
 # Approach-A multi-agent engage path. Imported lazily-safe: orchestrator_agent pulls in
 # the agent specialists but never agent_loop, so there is no import cycle.
 from orchestrator_agent import run_orchestrated_engagement
+from controller_agent import run_controlled_engagement, known_exploit_first
+from policy_agent import build_policy
 # Default preserves the original author's environment; override via HALO_LOG_DIR.
 LOG_DIR = os.environ.get("HALO_LOG_DIR", os.path.expanduser("~/.halo/logs"))
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -290,7 +293,10 @@ def parse_engagement_command(goal):
     for prefix in ("engage-multi ", "engage multi "):
         if low.startswith(prefix):
             return "multi", s[len(prefix):].strip()
-    if low.startswith("engage "):  # hyphen-multi already returned above
+    for prefix in ("engage-loop ", "engage loop "):
+        if low.startswith(prefix):
+            return "loop", s[len(prefix):].strip()
+    if low.startswith("engage "):  # hyphen-multi / hyphen-loop already returned above
         return "single", s[len("engage "):].strip()
     return None, s
 
@@ -360,7 +366,8 @@ def call_model(goal):
             {"role": "user", "content": goal}
         ],
         "temperature": 0.1,
-        "top_p": 0.9
+        "top_p": 0.9,
+        "max_tokens": MODEL_MAX_TOKENS
     }
     try:
         response = requests.post(MODEL_URL, json=payload, timeout=MODEL_TIMEOUT)
@@ -920,6 +927,45 @@ async def run_orchestrated(target):
     log.info(f"[REPORT] Orchestrated report written to {report_path}")
     return result
 
+async def run_controlled(target):
+    """Closed-loop (Controller) engagement: recon seeds the belief state, then a
+    model-backed policy is re-invoked every iteration with the full state plus the
+    failure history and picks the single next action, until real teeth stop it
+    (policy-done, budget, wall-clock scope-expiry, kill-switch, or a no-progress
+    stall). Same honest, gated engine as run_full_engagement / run_orchestrated —
+    exploitation goes through the ENGAGEMENT-gated execute_step, and breach success
+    is decided by breach_confirmed, never by the model's say-so.
+
+    An optional wall-clock budget (env HALO_ENGAGE_TTL, seconds) gives the loop the
+    scope-expiry teeth the spatial gate lacks — the guard a runaway tool would
+    otherwise blow past. Unset → no deadline, preserving prior behavior.
+    """
+    memory = AgentMemory()
+    ttl = os.environ.get("HALO_ENGAGE_TTL")
+    deadline = (time.monotonic() + float(ttl)) if ttl else None
+    goal = f"Identify and prove exploitable exposures on {target}, then stop."
+    log.info(f"[ENGAGE] Controlled (closed-loop) engagement started on {target}"
+             + (f" (TTL {ttl}s)" if ttl else ""))
+    async with mcp_session() as session:
+        result = await run_controlled_engagement(
+            session, target, goal, memory,
+            recon_fn=run_recon, execute_fn=execute_step, model_fn=call_model,
+            policy_fn=build_policy(), engagement=ENGAGEMENT,
+            engagement_id=SESSION_ID, deadline=deadline,
+            prioritize_fn=known_exploit_first,
+        )
+    report_path = f"{LOG_DIR}/{SESSION_ID}_controlled_report.md"
+    with open(report_path, "w") as f:
+        f.write(result["report"])
+    term = result["termination"]
+    adapt = result["adaptation"]
+    log.info(f"[REPORT] Controlled report written to {report_path}")
+    log.info(f"[LOOP] Stopped: {term['reason']} after {term['iterations']} iteration(s); "
+             f"adaptation score {adapt['score']:.2f} "
+             f"({adapt['novel']} novel / {adapt['repeats']} repeat of {adapt['replans']} replans)")
+    return result
+
+
 async def execute_chain(chain, cache=None):
     """Run an explicit list of tool steps in order, honoring the cache gate.
 
@@ -965,6 +1011,7 @@ def main():
     print("Commands:")
     print("  engage <target>       - full recon + attack loop (single-agent)")
     print("  engage-multi <target> - orchestrated recon→attack→validate→report (multi-agent)")
+    print("  engage-loop <target>  - closed-loop controller: replan every step on live state (set HALO_ENGAGE_TTL for a wall-clock budget)")
     print("  killswitch       - halt all further authorized action")
     print("  <any goal>       - single model query")
     print("  exit             - quit")
@@ -990,9 +1037,21 @@ def main():
             # Operator-trust mode (engagement.yaml `trust_operator: true`): the
             # host the operator just typed becomes the authorized scope, so there
             # is no per-target yaml edit. No-op when trust mode is off.
-            if mode in ("single", "multi"):
+            if mode in ("single", "multi", "loop"):
                 ENGAGEMENT.admit_operator_target(target)
-            if mode == "multi":
+            if mode == "loop":
+                # Same scope gate as every other engage form — refusal is logged.
+                if not ENGAGEMENT.authorize("halo", "recon", target,
+                                            detail="closed-loop engagement start"):
+                    log.warning(f"[ENGAGEMENT] {target} refused at engagement start")
+                    print(f"[ENGAGEMENT] {target} is out of authorized scope {ctx.scope_targets}. Refusing.")
+                    continue
+                result = asyncio.run(run_controlled(target))
+                term = result["termination"]
+                log.info(f"[REPORT] Closed-loop engagement complete — stopped on "
+                         f"{term['reason']}; "
+                         f"{len(result['memory'].successful_attacks)} port(s) breached")
+            elif mode == "multi":
                 # Same scope gate as `engage` — the refusal lands in the custody log.
                 if not ENGAGEMENT.authorize("halo", "recon", target,
                                             detail="orchestrated engagement start"):

@@ -156,15 +156,116 @@ def select_modules(product: str, version: str = "", runner=None,
     production uses the private local-msf runner. Both tiers fire through the same
     human-gated ``run_metasploit`` path (``run`` drives exploit and auxiliary alike).
     """
-    terms = sanitize_terms(f"{product} {version}")
-    if not terms:
+    full = sanitize_terms(f"{product} {version}")
+    if not full:
         return []
     run = runner or _default_runner
-    candidates = parse_msf_search(run(terms))
-    # Relevance gate: keep only modules whose PATH carries a real service token, so a
-    # fuzzy fingerprint can't fire an off-topic "excellent" exploit (a router RCE at a
-    # telnet port). Then exploits first, best MSF rank within each tier.
-    tokens = _relevance_tokens(terms)
-    candidates = [c for c in candidates if _is_relevant(c["module"], tokens)]
+    # Relevance is judged against the FULL fingerprint's service tokens — stable across
+    # the progressive search below, so broadening the query never loosens precision.
+    rel = _relevance_tokens(full)
+    # msf `search` ANDs every term, so any token absent from module metadata — a version
+    # (3.0.20) or a banner suffix (smbd, httpd) — zeroes the result. Live on deddy,
+    # `search Samba smbd 3.0.20` -> 0 while `search Samba` -> 19. Start with the full
+    # fingerprint (most specific) and drop the trailing token until msf returns hits,
+    # converging on the broad product name that actually matches.
+    tokens = full.split()
+    candidates: list[dict] = []
+    while tokens and not candidates:
+        parsed = parse_msf_search(run(" ".join(tokens)))
+        # Relevance gate: keep only modules whose PATH carries a real service token, so
+        # a fuzzy fingerprint can't fire an off-topic "excellent" exploit (a router RCE
+        # at a telnet port).
+        candidates = [c for c in parsed if _is_relevant(c["module"], rel)]
+        tokens = tokens[:-1]
+    # Then exploits first, best MSF rank within each tier.
     candidates.sort(key=lambda c: (_tier(c["module"]), -rank_value(c["rank"])))
     return candidates[:limit]
+
+
+# ── Payload selection: make a chosen exploit module actually FIREABLE ─────────
+# select_modules picks the module; this picks the payload that lets it land a
+# session. Without it, plan_exploit_step injected run_metasploit with no PAYLOAD,
+# so msf used a wrong/default one and opened zero sessions (memory: "fires but
+# lands zero sessions"). A payload path row from `show payloads`, e.g.
+#   0  payload/cmd/unix/bind_netcat  ...  normal  No  Unix Command Shell, Bind TCP
+_PAYLOAD_ROW_RE = re.compile(r"^\s*\d+\s+(payload/\S+)", re.M)
+
+# Platform tokens we trust for a *nix target (Metasploitable and most real hosts).
+# A payload must carry one of these to be considered, so we never set a Windows
+# payload on a Linux service (the wrong-default that opened zero sessions).
+_NIX_PAYLOAD_TOKENS = ("cmd/unix", "linux/", "unix/")
+
+
+# Interpreter reliability order for cmd/unix shells, most dependable first. netcat
+# and perl are near-universal on *nix targets; awk/lua bind shells are fragile and
+# failed live on Metasploitable (2026-08-18), so they sink to the bottom. Anything not
+# listed ranks between the known-good and the known-fragile.
+_INTERP_RELIABILITY = ("netcat", "perl", "python", "ruby", "bash", "openssl", "telnet")
+_INTERP_FRAGILE = ("awk", "lua", "nodejs", "socat")
+
+
+def _reliability_rank(payload: str) -> int:
+    """Lower is more reliable. Known-good interpreters first, fragile ones last."""
+    for i, interp in enumerate(_INTERP_RELIABILITY):
+        if interp in payload:
+            return i
+    for interp in _INTERP_FRAGILE:
+        if interp in payload:
+            return 100
+    return 50   # unknown interpreter: between known-good and known-fragile
+
+
+def _most_reliable(payloads: list[str]) -> str:
+    """Pick the payload with the most dependable interpreter, stable on ties."""
+    return min(payloads, key=lambda p: (_reliability_rank(p), payloads.index(p)))
+
+
+def parse_msf_payloads(output: str) -> list[str]:
+    """Pull payload module paths (without the leading ``payload/``) from a
+    ``show payloads`` dump, in listed order."""
+    return [m.group(1)[len("payload/"):]
+            for m in _PAYLOAD_ROW_RE.finditer(strip_ansi(output or ""))]
+
+
+def _default_payload_runner(module: str) -> str:
+    """Ask the LOCAL msf which payloads a module accepts — same private, DB-less,
+    daemon-less, bounded invocation as _default_runner, just `show payloads`."""
+    try:
+        proc = subprocess.run(
+            ["msfconsole", "-q", "-n", "-x", f"use {module}; show payloads; exit"],
+            capture_output=True, text=True, timeout=120,
+        )
+        return proc.stdout or ""
+    except Exception:
+        return ""
+
+
+def select_payload(module: str, runner=None) -> dict | None:
+    """Choose a compatible payload for an exploit ``module``, or None.
+
+    Returns ``{"payload": <path>, "needs_lhost": bool}`` — the path is ready for
+    msf ``set PAYLOAD`` (no leading ``payload/``). None means "fire without a
+    payload": an auxiliary/ module needs none, and if msf lists no *nix payload we
+    decline rather than guess a wrong-platform one.
+
+    Preference is BIND over REVERSE: a bind shell has the target listen and we
+    connect, so no attacker-side LHOST/listener infra is needed — the robust choice
+    in an isolated lab. A reverse shell is the fallback and is flagged needs_lhost so
+    the caller supplies LHOST/LPORT. ``runner(module)->output`` is injectable for
+    offline tests; production queries the local msf.
+    """
+    if not module.startswith("exploit/"):
+        return None                      # auxiliary/scanner: `run` needs no payload
+    run = runner or _default_payload_runner
+    payloads = [p for p in parse_msf_payloads(run(module))
+                if any(tok in p for tok in _NIX_PAYLOAD_TOKENS)]
+    if not payloads:
+        return None
+    binds = [p for p in payloads if "bind" in p]
+    if binds:
+        return {"payload": _most_reliable(binds), "needs_lhost": False}
+    reverses = [p for p in payloads if "reverse" in p]
+    if reverses:
+        return {"payload": _most_reliable(reverses), "needs_lhost": True}
+    # A non-bind/non-reverse *nix payload (e.g. cmd/unix/generic): usable, no LHOST.
+    return {"payload": payloads[0], "needs_lhost": False}

@@ -35,6 +35,22 @@ class TestParseEngagementCommand(unittest.TestCase):
         self.assertEqual(parse("engage 203.0.113.3"),
                          ("single", "203.0.113.3"))
 
+    def test_hyphen_loop_routes_to_loop(self):
+        self.assertEqual(parse("engage-loop 203.0.113.3"),
+                         ("loop", "203.0.113.3"))
+
+    def test_space_loop_routes_to_loop(self):
+        # Same separator-tolerance as multi: a space must not fall through to
+        # single and glue "loop" onto the target.
+        self.assertEqual(parse("engage loop 203.0.113.3"),
+                         ("loop", "203.0.113.3"))
+
+    def test_loop_never_leaks_into_single_target(self):
+        for cmd in ("engage-loop 10.0.0.5", "engage loop 10.0.0.5"):
+            mode, target = parse(cmd)
+            self.assertEqual(mode, "loop")
+            self.assertNotIn("loop", target)
+
     def test_multi_never_leaks_into_single_target(self):
         # Whichever separator, the target must never carry the word "multi".
         for cmd in ("engage-multi 10.0.0.5", "engage multi 10.0.0.5"):
